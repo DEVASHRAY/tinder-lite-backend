@@ -12,6 +12,7 @@ import cookieParser from 'cookie-parser';
 import { authMiddleware } from './middlewares/auth-middleware.ts';
 import { adminMiddleware } from './middlewares/admin-middleware.ts';
 import { connectionRouter } from './modules/connection/connection.routes.ts';
+import { feedRouter } from './modules/feed/feed.routes.ts';
 
 // When you run `npm run dev`, Node starts this file from the top:
 // -> loadLocalEnv: if `.env` exists, copy its keys into process.env (before Express is created)
@@ -45,6 +46,7 @@ app.use('/users', adminMiddleware);
 app.use(userRouter);
 app.use(profileRouter);
 app.use(connectionRouter);
+app.use(feedRouter);
 
 // Error middleware is last: it only runs after a route calls `next(error)`.
 app.use(errorMiddleware);
