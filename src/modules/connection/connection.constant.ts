@@ -23,6 +23,8 @@ enum CONNECTION_LIST {
   Received = 'received',
   Sent = 'sent',
   Matches = 'matches',
+  Ignored = 'ignored',
+  Rejected = 'rejected',
 }
 
 const connectionUserSelect: (keyof UserFields)[] = ['age', 'name', 'gender', 'photoUrl', 'id'];

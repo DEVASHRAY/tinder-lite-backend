@@ -130,6 +130,23 @@ const getConnections = async ({
       });
       break;
     }
+
+    case 'ignored': {
+      connections = await Connection.find({
+        status: ConnectionConstantsCollection.CONNECTION_STATUS_ENUM.IGNORED,
+        $or: [{ senderId: user.id }, { receiverId: user.id }],
+      });
+      break;
+    }
+
+    case 'rejected': {
+      connections = await Connection.find({
+        status: ConnectionConstantsCollection.CONNECTION_STATUS_ENUM.REJECTED,
+        $or: [{ senderId: user.id }, { receiverId: user.id }],
+      });
+      break;
+    }
+
     default: {
       throw new Error('Invalid Status');
     }
