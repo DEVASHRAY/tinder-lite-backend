@@ -1,14 +1,14 @@
 {
-  "name": "devtinderbackend",
+  "name": "tinder-lite-backend",
   "version": "1.0.0",
   "description": "",
-  "homepage": "https://github.com/DEVASHRAY/TinderBackend#readme",
+  "homepage": "https://github.com/DEVASHRAY/tinder-lite-backend#readme",
   "bugs": {
-    "url": "https://github.com/DEVASHRAY/TinderBackend/issues"
+    "url": "https://github.com/DEVASHRAY/tinder-lite-backend/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DEVASHRAY/TinderBackend.git"
+    "url": "git+https://github.com/DEVASHRAY/tinder-lite-backend.git"
   },
   "type": "module",
   "engines": {
