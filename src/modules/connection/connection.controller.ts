@@ -1,4 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
+import { ApplicationErrorConstantsCollection } from '../../lib/application-error.constants.ts';
+import { ApplicationError } from '../../lib/application-error.ts';
 import { connectionService } from './connection.service.ts';
 import type { ConnectionTypeCollection } from './connection.types.ts';
 
@@ -15,17 +17,26 @@ const createConnection = async (
     const { user, body } = req;
     // Check if the user is authenticated
     if (!user) {
-      throw new Error('User not found');
+      throw new ApplicationError({
+        message: 'Unauthorized',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+      });
     }
 
     // Check if the receiver ID is provided
     if (!body.receiverId) {
-      throw new Error('Receiver ID is required');
+      throw new ApplicationError({
+        message: 'Receiver ID is required',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
     }
 
     // Check if the status is provided
     if (!body.status) {
-      throw new Error('Status is required');
+      throw new ApplicationError({
+        message: 'Status is required',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
     }
 
     // Call the connection service to create the connection
@@ -55,15 +66,24 @@ const updateConnection = async (
     const { user, body, params } = req;
 
     if (!user) {
-      throw new Error('User not found');
+      throw new ApplicationError({
+        message: 'Unauthorized',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+      });
     }
 
     if (!params.connectionId) {
-      throw new Error('Connection ID is required');
+      throw new ApplicationError({
+        message: 'Connection ID is required',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
     }
 
     if (!body.status) {
-      throw new Error('Status is required');
+      throw new ApplicationError({
+        message: 'Status is required',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
     }
 
     const updatedConnection = await connectionService.updateConnection({
@@ -92,11 +112,17 @@ const getConnections = async (
     const { user, query } = req;
 
     if (!user) {
-      throw new Error('User not found');
+      throw new ApplicationError({
+        message: 'Unauthorized',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+      });
     }
 
     if (!query.connectionType) {
-      throw new Error('Connection type is required');
+      throw new ApplicationError({
+        message: 'Connection type is required',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
     }
 
     const connections = await connectionService.getConnections({

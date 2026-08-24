@@ -1,11 +1,16 @@
 import jwt from 'jsonwebtoken';
+import { ApplicationErrorConstantsCollection } from './application-error.constants.ts';
+import { ApplicationError } from './application-error.ts';
 import { JwtConstantsCollection } from './jwt.constants.ts';
 import type { JwtTypeCollection } from './jwt.types.ts';
 
 const getJwtSecret = () => {
   const jwtSecret = process.env['JWT_SECRET'];
   if (!jwtSecret) {
-    throw new Error('JWT_SECRET is required');
+    throw new ApplicationError({
+      message: 'JWT_SECRET is required',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.INTERNAL_SERVER_ERROR,
+    });
   }
 
   return jwtSecret;
@@ -32,13 +37,32 @@ const generateAccessToken = ({ userId }: JwtTypeCollection['AccessToken']) => {
 };
 
 const verifyAccessToken = ({ token }: { token: string }) => {
-  const decoded = jwt.verify(token, getJwtSecret());
+  try {
+    const decoded = jwt.verify(token, getJwtSecret());
 
-  if (!isAccessToken(decoded)) {
-    throw new Error('Invalid access token');
+    if (!isAccessToken(decoded)) {
+      throw new ApplicationError({
+        message: 'Invalid access token',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+      });
+    }
+
+    return decoded;
+  } catch (error) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    if (error instanceof jwt.JsonWebTokenError) {
+      throw new ApplicationError({
+        message: 'Invalid or expired access token',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+        cause: error,
+      });
+    }
+
+    throw error;
   }
-
-  return decoded;
 };
 
 export const JwtCollection = {

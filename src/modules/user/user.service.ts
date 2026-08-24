@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import { ApplicationErrorConstantsCollection } from '../../lib/application-error.constants.ts';
+import { ApplicationError } from '../../lib/application-error.ts';
 // Node needs a real file extension in imports (browsers/bundlers often hide this).
 // We write `.ts` in source; the compiler turns it into `.js` in the built files.
 import { User, type UserFields } from './user.model.ts';
@@ -11,17 +13,26 @@ import type { UserTypeCollection } from './user.types.ts';
 
 const getUserDetails = async ({ id }: Pick<UserFields, 'id'>) => {
   if (!id) {
-    throw new Error('User ID is required');
+    throw new ApplicationError({
+      message: 'User ID is required',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw new Error('Invalid user id');
+    throw new ApplicationError({
+      message: 'Invalid user id',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   const user = await User.findById(id);
 
   if (!user) {
-    throw new Error('User not found');
+    throw new ApplicationError({
+      message: 'User not found',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.NOT_FOUND,
+    });
   }
 
   return user;
@@ -34,17 +45,26 @@ const getAllUsers = async () => {
 
 const deleteUser = async ({ id }: Pick<UserFields, 'id'>) => {
   if (!id) {
-    throw new Error('User ID is required');
+    throw new ApplicationError({
+      message: 'User ID is required',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw new Error('Invalid user id');
+    throw new ApplicationError({
+      message: 'Invalid user id',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   const user = await User.findById(id);
 
   if (!user) {
-    throw new Error('User not found');
+    throw new ApplicationError({
+      message: 'User not found',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.NOT_FOUND,
+    });
   }
 
   await user.deleteOne();
@@ -61,7 +81,10 @@ const updateUser = async ({
   const user = await User.findById(id);
 
   if (!user) {
-    throw new Error('User not found');
+    throw new ApplicationError({
+      message: 'User not found',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.NOT_FOUND,
+    });
   }
 
   const adminOnlyUserUpdateAllowedFields: (keyof UserTypeCollection['AdminOnlyUserUpdateInput'])[] =

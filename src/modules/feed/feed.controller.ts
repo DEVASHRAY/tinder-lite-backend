@@ -1,4 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
+import { ApplicationErrorConstantsCollection } from '../../lib/application-error.constants.ts';
+import { ApplicationError } from '../../lib/application-error.ts';
 import { feedService } from './feed.service.ts';
 
 const getFeed = async (
@@ -8,7 +10,10 @@ const getFeed = async (
 ) => {
   try {
     if (!req.user) {
-      throw new Error('User not found');
+      throw new ApplicationError({
+        message: 'Unauthorized',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+      });
     }
 
     const feedUsers = await feedService.getFeed({

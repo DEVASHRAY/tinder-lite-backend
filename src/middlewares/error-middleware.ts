@@ -1,5 +1,8 @@
 // `import type` is erased at compile time — TypeScript uses the type, the built JS does not import it for values.
 import type { NextFunction, Request, Response } from 'express';
+import mongoose from 'mongoose';
+import { ApplicationErrorConstantsCollection } from '../lib/application-error.constants.ts';
+import { ApplicationError } from '../lib/application-error.ts';
 import { logger } from '../lib/logger.ts';
 
 // Express only treats a function as error middleware if it has 4 arguments
@@ -26,10 +29,34 @@ export const errorMiddleware = (
     return;
   }
 
-  if (error instanceof Error) {
-    res.status(400).json({ message: error.message });
+  if (error instanceof ApplicationError) {
+    const message =
+      error.statusCode === ApplicationErrorConstantsCollection.HttpStatusCode.INTERNAL_SERVER_ERROR
+        ? 'Internal server error'
+        : error.message;
+
+    res.status(error.statusCode).json({ message });
     return;
   }
 
-  res.status(400).json({ message: 'Request failed' });
+  if (
+    error instanceof mongoose.Error.ValidationError ||
+    error instanceof mongoose.Error.CastError
+  ) {
+    res
+      .status(ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY)
+      .json({ message: error.message });
+    return;
+  }
+
+  if (error instanceof mongoose.mongo.MongoServerError && error.code === 11000) {
+    res
+      .status(ApplicationErrorConstantsCollection.HttpStatusCode.CONFLICT)
+      .json({ message: 'Resource already exists' });
+    return;
+  }
+
+  res
+    .status(ApplicationErrorConstantsCollection.HttpStatusCode.INTERNAL_SERVER_ERROR)
+    .json({ message: 'Internal server error' });
 };

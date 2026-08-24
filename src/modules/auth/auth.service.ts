@@ -1,4 +1,6 @@
 import argon2 from 'argon2';
+import { ApplicationErrorConstantsCollection } from '../../lib/application-error.constants.ts';
+import { ApplicationError } from '../../lib/application-error.ts';
 import { JwtCollection } from '../../lib/jwt.ts';
 import { User } from '../user/user.model.ts';
 import { createUserInstance } from '../user/user.create.ts';
@@ -9,13 +11,19 @@ import mongoose from 'mongoose';
 
 const createUser = async ({ input }: { input: AuthTypeCollection['CreateUserInput'] }) => {
   if (!input.email || !input.password) {
-    throw new Error('Name and email are required');
+    throw new ApplicationError({
+      message: 'Email and password are required',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   const existingUser = await User.findOne({ email: input.email });
 
   if (existingUser) {
-    throw new Error('Email already exists');
+    throw new ApplicationError({
+      message: 'Email already exists',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.CONFLICT,
+    });
   }
 
   const user = createUserInstance(input);
@@ -31,7 +39,11 @@ const createUser = async ({ input }: { input: AuthTypeCollection['CreateUserInpu
     // Unique email index: two signups at once can both pass findOne, then Mongo
     // rejects the second write with code 11000. Same meaning as "Email already exists".
     if (error instanceof mongoose.mongo.MongoServerError && error.code === 11000) {
-      throw new Error('Email already exists', { cause: error });
+      throw new ApplicationError({
+        message: 'Email already exists',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.CONFLICT,
+        cause: error,
+      });
     }
     throw error;
   }
@@ -48,11 +60,17 @@ const signup = async ({ input }: { input: AuthTypeCollection['CreateUserInput'] 
 
 const signupBulk = async ({ users }: { users: AuthTypeCollection['CreateUserInput'][] }) => {
   if (!users.length) {
-    throw new Error('Users are required');
+    throw new ApplicationError({
+      message: 'Users are required',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   if (users.length > AuthConstantsCollection.maxBulkSignupCount) {
-    throw new Error('Too many users');
+    throw new ApplicationError({
+      message: 'Too many users',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   const createdUsers = [];
@@ -67,7 +85,10 @@ const signupBulk = async ({ users }: { users: AuthTypeCollection['CreateUserInpu
 
 const login = async ({ input }: AuthTypeCollection['LoginInput']) => {
   if (!input.email || !input.password) {
-    throw new Error('Invalid email or password');
+    throw new ApplicationError({
+      message: 'Invalid email or password',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+    });
   }
 
   if (
@@ -75,21 +96,30 @@ const login = async ({ input }: AuthTypeCollection['LoginInput']) => {
     input.password.length < UserConstantsCollection.strongPasswordValidationOptions.minLength ||
     input.password.length > UserConstantsCollection.userPasswordMaxLength
   ) {
-    throw new Error('Invalid email or password');
+    throw new ApplicationError({
+      message: 'Invalid email or password',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+    });
   }
 
   // `select: false` on password: we must ask for the hash to verify it.
   const user = await User.findOne({ email: input.email }).select('+password');
 
   if (!user) {
-    throw new Error('Invalid email or password');
+    throw new ApplicationError({
+      message: 'Invalid email or password',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+    });
   }
 
   // Reads salt + hash from the stored string; compares to what they typed.
   const isPasswordValid = await argon2.verify(user.password, input.password);
 
   if (!isPasswordValid) {
-    throw new Error('Invalid email or password');
+    throw new ApplicationError({
+      message: 'Invalid email or password',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+    });
   }
 
   // Generate access token

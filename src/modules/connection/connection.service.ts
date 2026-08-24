@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import { ApplicationErrorConstantsCollection } from '../../lib/application-error.constants.ts';
+import { ApplicationError } from '../../lib/application-error.ts';
 import { User, type UserDocument } from '../user/user.model.ts';
 import { ConnectionConstantsCollection } from './connection.constant.ts';
 import { Connection, type ConnectionDocument } from './connection.model.ts';
@@ -16,19 +18,28 @@ const createConnection = async ({
 }) => {
   // Check if the sender and receiver are the same
   if (user.id === receiverId) {
-    throw new Error('Sender and receiver cannot be the same');
+    throw new ApplicationError({
+      message: 'Sender and receiver cannot be the same',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   // Check if the status is allowed
   if (!ConnectionConstantsCollection.CreateConnectionAllowedStatus.includes(status)) {
-    throw new Error('Invalid connection status');
+    throw new ApplicationError({
+      message: 'Invalid connection status',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   // Find the receiver user
   const receiverUser = await User.findById(receiverId);
 
   if (!receiverUser) {
-    throw new Error('Receiver user not found');
+    throw new ApplicationError({
+      message: 'Receiver user not found',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.NOT_FOUND,
+    });
   }
 
   // A→B and B→A must hit the same unique pair, not two directed rows.
@@ -43,7 +54,10 @@ const createConnection = async ({
   });
 
   if (connection) {
-    throw new Error('Connection already exists');
+    throw new ApplicationError({
+      message: 'Connection already exists',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.CONFLICT,
+    });
   }
 
   try {
@@ -58,7 +72,11 @@ const createConnection = async ({
     return newConnection;
   } catch (error) {
     if (error instanceof mongoose.mongo.MongoServerError && error.code === 11000) {
-      throw new Error('Connection already exists', { cause: error });
+      throw new ApplicationError({
+        message: 'Connection already exists',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.CONFLICT,
+        cause: error,
+      });
     }
     throw error;
   }
@@ -74,21 +92,33 @@ const updateConnection = async ({
   status: ConnectionTypeCollection['UpdateConnectionAllowedStatusType'];
 }) => {
   if (!ConnectionConstantsCollection.UpdateConnectionAllowedStatus.includes(status)) {
-    throw new Error('Invalid connection status');
+    throw new ApplicationError({
+      message: 'Invalid connection status',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   const connection = await Connection.findById(connectionId);
 
   if (!connection) {
-    throw new Error('Connection not found');
+    throw new ApplicationError({
+      message: 'Connection not found',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.NOT_FOUND,
+    });
   }
 
   if (!connection.receiverId.equals(user.id)) {
-    throw new Error('You are not authorized to update this connection');
+    throw new ApplicationError({
+      message: 'You are not authorized to update this connection',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.FORBIDDEN,
+    });
   }
 
   if (connection.status !== ConnectionConstantsCollection.CONNECTION_STATUS_ENUM.INTERESTED) {
-    throw new Error(`Connection cannot be updated to ${status} status`);
+    throw new ApplicationError({
+      message: `Connection cannot be updated to ${status} status`,
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
   }
 
   connection.status = status;
@@ -148,7 +178,10 @@ const getConnections = async ({
     }
 
     default: {
-      throw new Error('Invalid Status');
+      throw new ApplicationError({
+        message: 'Invalid connection type',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
     }
   }
 

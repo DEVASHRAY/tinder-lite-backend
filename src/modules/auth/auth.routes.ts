@@ -9,4 +9,4 @@ authRouter.post('/signup/bulk', authController.signupBulk);
 
 authRouter.post('/login', authController.login);
 
-authRouter.get('/logout', authController.logout);
+authRouter.post('/logout', authController.logout);
