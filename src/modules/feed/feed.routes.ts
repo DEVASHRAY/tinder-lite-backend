@@ -3,4 +3,4 @@ import { feedController } from './feed.controller.ts';
 
 export const feedRouter = Router();
 
-feedRouter.get('/feed', feedController.getFeed);
+feedRouter.get('/', feedController.getFeed);

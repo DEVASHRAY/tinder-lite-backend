@@ -8,10 +8,10 @@ import { userController } from './user.controller.ts';
 // This file: HTTP method + URL → controller. No `req`/`res`, no Mongo, no business rules.
 export const userRouter = Router();
 
-userRouter.get('/users', userController.getAllUsers);
+userRouter.get('/', userController.getAllUsers);
 
-userRouter.get('/users/:id', userController.getUser);
+userRouter.get('/:id', userController.getUser);
 
-userRouter.delete('/users/delete/:id', userController.deleteUser);
+userRouter.delete('/:id', userController.deleteUser);
 
-userRouter.patch('/users/update/:id', userController.updateUser);
+userRouter.patch('/:id', userController.updateUser);

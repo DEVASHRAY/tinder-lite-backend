@@ -5,8 +5,8 @@ import { profileController } from './profile.controller.ts';
 
 export const profileRouter = Router();
 
-profileRouter.get('/profile', profileController.getProfile);
+profileRouter.get('/', profileController.getProfile);
 
-profileRouter.get('/profile/:id', profileController.getProfileById);
+profileRouter.get('/:id', profileController.getProfileById);
 
-profileRouter.patch('/profile/update', profileController.updateProfile);
+profileRouter.patch('/', profileController.updateProfile);

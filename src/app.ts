@@ -1,18 +1,12 @@
 import express from 'express';
 // Node needs a real file extension in imports (browsers/bundlers often hide this).
 // We write `.ts` in source; the compiler turns it into `.js` in the built files.
+import { apiRouter } from './api.routes.ts';
 import { connectDB } from './config/database.ts';
 import { loadLocalEnv } from './config/env.ts';
 import { errorMiddleware } from './middlewares/error-middleware.ts';
 import { logger } from './lib/logger.ts';
-import { authRouter } from './modules/auth/auth.routes.ts';
-import { profileRouter } from './modules/profile/profile.routes.ts';
-import { userRouter } from './modules/user/user.routes.ts';
 import cookieParser from 'cookie-parser';
-import { authMiddleware } from './middlewares/auth-middleware.ts';
-import { adminMiddleware } from './middlewares/admin-middleware.ts';
-import { connectionRouter } from './modules/connection/connection.routes.ts';
-import { feedRouter } from './modules/feed/feed.routes.ts';
 
 // When you run `npm run dev`, Node starts this file from the top:
 // -> loadLocalEnv: if `.env` exists, copy its keys into process.env (before Express is created)
@@ -37,16 +31,8 @@ app.use(express.json());
 // `cookie-parser` reads the `Cookie` header and sets `req.cookies` (needed to read the JWT cookie).
 app.use(cookieParser());
 
-// `app.use(userRouter)` plugs the user mini-app into this server (no path prefix).
-app.use(authRouter);
-
-app.use(authMiddleware);
-
-app.use('/users', adminMiddleware);
-app.use(userRouter);
-app.use(profileRouter);
-app.use(connectionRouter);
-app.use(feedRouter);
+// Every API endpoint shares one versioned prefix, so future breaking changes can move to `/api/v2`.
+app.use('/api/v1', apiRouter);
 
 // Error middleware is last: it only runs after a route calls `next(error)`.
 app.use(errorMiddleware);
