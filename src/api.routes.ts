@@ -9,11 +9,30 @@ import { userRouter } from './modules/user/user.routes.ts';
 
 export const apiRouter = Router();
 
-apiRouter.use('/auth', authRouter);
+const apiV1Router = Router();
 
-apiRouter.use(authMiddleware);
+apiRouter.use('/v1', apiV1Router);
 
-apiRouter.use('/users', adminMiddleware, userRouter);
-apiRouter.use('/profile', profileRouter);
-apiRouter.use('/connections', connectionRouter);
-apiRouter.use('/feed', feedRouter);
+apiV1Router.use('/auth', authRouter);
+
+apiV1Router.use(authMiddleware);
+
+apiV1Router.use('/users', adminMiddleware, userRouter);
+apiV1Router.use('/profile', profileRouter);
+apiV1Router.use('/connections', connectionRouter);
+apiV1Router.use('/feed', feedRouter);
+
+/*
+ * API version routing
+ *
+ * - `app.ts` mounts `apiRouter` at `/api`.
+ * - `apiV1Router` preserves the existing `/api/v1/*` contracts.
+ * - A future Profile V2 can mount at `/v2/profile` without moving Auth, Feed,
+ *   Connections, or Users away from their V1 routes.
+ *
+ * Registration order
+ *
+ * - Mounting `/v1` first makes the parent-to-child URL flow easier to read.
+ * - Express keeps a reference to `apiV1Router`, so routes added below remain
+ *   available after Node finishes loading this module and starts the server.
+ */

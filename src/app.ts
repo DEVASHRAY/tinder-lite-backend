@@ -31,8 +31,12 @@ app.use(express.json());
 // `cookie-parser` reads the `Cookie` header and sets `req.cookies` (needed to read the JWT cookie).
 app.use(cookieParser());
 
-// Every API endpoint shares one versioned prefix, so future breaking changes can move to `/api/v2`.
-app.use('/api/v1', apiRouter);
+/*
+ * API namespace
+ * - `app.ts` decides that every backend HTTP endpoint starts with `/api`.
+ * - `apiRouter` owns version prefixes such as `/v1` and future `/v2` routes.
+ */
+app.use('/api', apiRouter);
 
 // Error middleware is last: it only runs after a route calls `next(error)`.
 app.use(errorMiddleware);
