@@ -191,16 +191,58 @@ const getConnections = async ({
   ]);
 
   return connections.map((connection) => {
-    if (user.id === connection.senderId.id.toString()) {
-      return connection.receiverId.toJSON();
-    }
+    const viewerIsSender = user.id === connection.senderId.id.toString();
+    const peer = viewerIsSender ? connection.receiverId : connection.senderId;
 
-    return connection.senderId.toJSON();
+    return {
+      connectionId: connection.id,
+      profile: peer.toJSON(),
+    };
   });
+};
+
+const getPeerConnection = async ({
+  peerUserId,
+  user,
+}: {
+  peerUserId: string;
+  user: UserDocument;
+}) => {
+  if (user.id === peerUserId) {
+    throw new ApplicationError({
+      message: 'Cannot look up a connection with yourself',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
+  }
+
+  const { minUserId, maxUserId } = getMinMaxUserIds({
+    senderId: user.id,
+    receiverId: peerUserId,
+  });
+
+  const connection = await Connection.findOne({
+    $and: [{ minUserId }, { maxUserId }],
+  });
+
+  if (!connection) {
+    throw new ApplicationError({
+      message: 'Connection not found',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.NOT_FOUND,
+    });
+  }
+
+  return {
+    connectionId: connection.id,
+    status: connection.status,
+    viewerRole: connection.receiverId.equals(user.id)
+      ? ConnectionConstantsCollection.CONNECTION_VIEWER_ROLE.Receiver
+      : ConnectionConstantsCollection.CONNECTION_VIEWER_ROLE.Sender,
+  };
 };
 
 export const connectionService = {
   createConnection,
   updateConnection,
   getConnections,
+  getPeerConnection,
 };

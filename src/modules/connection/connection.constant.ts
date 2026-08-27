@@ -27,12 +27,31 @@ enum CONNECTION_LIST {
   Rejected = 'rejected',
 }
 
-const connectionUserSelect: (keyof UserFields)[] = ['age', 'name', 'gender', 'photoUrl', 'id'];
+enum CONNECTION_VIEWER_ROLE {
+  Receiver = 'receiver',
+  Sender = 'sender',
+}
+
+const connectionUserSelect: (keyof UserFields)[] = [
+  'age',
+  'bio',
+  'gender',
+  'id',
+  'jobTitle',
+  'location',
+  'name',
+  'photoUrl',
+  'photos',
+];
+
+const publicProfileSelect: (keyof UserFields)[] = [...connectionUserSelect, 'life'];
 
 export const ConnectionConstantsCollection = {
   CONNECTION_STATUS_ENUM,
   CONNECTION_LIST,
+  CONNECTION_VIEWER_ROLE,
   CreateConnectionAllowedStatus,
   UpdateConnectionAllowedStatus,
   connectionUserSelect,
+  publicProfileSelect,
 };

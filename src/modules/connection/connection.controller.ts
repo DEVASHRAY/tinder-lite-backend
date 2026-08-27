@@ -136,8 +136,40 @@ const getConnections = async (
   }
 };
 
+const getPeerConnection = async (
+  req: Request<{ userId?: string }>,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    if (!req.user) {
+      throw new ApplicationError({
+        message: 'Unauthorized',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+      });
+    }
+
+    if (!req.params.userId) {
+      throw new ApplicationError({
+        message: 'User ID is required',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
+    }
+
+    const peerConnection = await connectionService.getPeerConnection({
+      peerUserId: req.params.userId,
+      user: req.user,
+    });
+
+    res.status(200).json({ message: 'Connection fetched', data: peerConnection });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const connectionController = {
   getConnections,
+  getPeerConnection,
   updateConnection,
   createConnection,
 };

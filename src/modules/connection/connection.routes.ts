@@ -7,4 +7,6 @@ connectionRouter.post('/', connectionController.createConnection);
 
 connectionRouter.patch('/:connectionId', connectionController.updateConnection);
 
+connectionRouter.get('/peer/:userId', connectionController.getPeerConnection);
+
 connectionRouter.get('/', connectionController.getConnections);

@@ -22,5 +22,37 @@ export const createUserInstance = (input: AuthTypeCollection['CreateUserInput'])
     user.photoUrl = input.photoUrl;
   }
 
+  if (input.birthDate) {
+    user.birthDate = input.birthDate;
+  }
+
+  if (input.bio) {
+    user.bio = input.bio;
+  }
+
+  if (input.jobTitle) {
+    user.jobTitle = input.jobTitle;
+  }
+
+  if (input.photos?.length) {
+    user.photos = input.photos;
+  }
+
+  if (input.location?.city) {
+    user.location = { city: input.location.city };
+  }
+
+  if (input.interestedIn?.length) {
+    user.interestedIn = input.interestedIn;
+  }
+
+  if (input.preferences) {
+    user.preferences = input.preferences;
+  }
+
+  if (input.life) {
+    user.life = input.life;
+  }
+
   return user;
 };

@@ -1,10 +1,11 @@
 import { ApplicationErrorConstantsCollection } from '../../lib/application-error.constants.ts';
 import { ApplicationError } from '../../lib/application-error.ts';
+import { ConnectionConstantsCollection } from '../connection/connection.constant.ts';
 import { User, type UserDocument, type UserFields } from '../user/user.model.ts';
 import type { ProfileTypeCollection } from './profile.types.ts';
 
 const getProfileById = async ({ id }: Pick<UserFields, 'id'>) => {
-  const user = await User.findById(id);
+  const user = await User.findById(id).select(ConnectionConstantsCollection.publicProfileSelect);
 
   if (!user) {
     throw new ApplicationError({
@@ -28,7 +29,15 @@ export const updateProfile = async ({
     'phoneNumber',
     'gender',
     'age',
+    'birthDate',
+    'bio',
+    'jobTitle',
     'photoUrl',
+    'photos',
+    'location',
+    'interestedIn',
+    'preferences',
+    'life',
   ];
 
   userAllowedFields.forEach((field) => {

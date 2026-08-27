@@ -88,7 +88,22 @@ const updateUser = async ({
   }
 
   const adminOnlyUserUpdateAllowedFields: (keyof UserTypeCollection['AdminOnlyUserUpdateInput'])[] =
-    ['name', 'phoneNumber', 'gender', 'age', 'photoUrl', 'role'];
+    [
+      'name',
+      'phoneNumber',
+      'gender',
+      'age',
+      'birthDate',
+      'bio',
+      'jobTitle',
+      'photoUrl',
+      'photos',
+      'location',
+      'interestedIn',
+      'preferences',
+      'life',
+      'role',
+    ];
 
   adminOnlyUserUpdateAllowedFields.forEach((field) => {
     const value = input[field];
