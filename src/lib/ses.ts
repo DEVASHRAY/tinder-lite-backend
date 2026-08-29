@@ -121,6 +121,11 @@ const sendEmail = async ({
       });
     }
 
+    logger.success({
+      message: 'SES accepted email',
+      detail: `Message ID: ${output.MessageId}; Request ID: ${output.$metadata.requestId ?? 'unavailable'}; HTTP status: ${String(output.$metadata.httpStatusCode ?? 'unavailable')}`,
+    });
+
     return { messageId: output.MessageId };
   } catch (error) {
     if (error instanceof ApplicationError) {

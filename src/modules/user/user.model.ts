@@ -403,6 +403,12 @@ const userSchema = new mongoose.Schema(
     life: {
       type: lifeSchema,
     },
+    isSeededProfile: {
+      type: Boolean,
+      required: true,
+      immutable: true,
+      select: false,
+    },
   },
   {
     timestamps: true,

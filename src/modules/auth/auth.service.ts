@@ -30,7 +30,7 @@ const createUser = async ({
     });
   }
 
-  const user = createUserInstance(input);
+  const user = createUserInstance({ input });
   // Schema rules run on the typed password (and the rest of the document). Nothing is written yet.
   await user.validate();
   // Replace the typed password with an Argon2 hash. We cannot get the original back.

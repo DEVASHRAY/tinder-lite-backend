@@ -189,8 +189,10 @@ const signupWithOtp = async (
     }
 
     const user = createUserInstance({
-      ...input,
-      email,
+      input: {
+        ...input,
+        email,
+      },
     });
     await user.validate();
 

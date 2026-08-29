@@ -2,19 +2,22 @@ import type { AuthTypeCollection } from '../auth/auth.types.ts';
 import { UserConstantsCollection } from './user.constants.ts';
 import { User } from './user.model.ts';
 
-// Never pass `req.body` into `new User(...)`. Extra keys like `role` would be copied.
-// Only the fields below are set; role is always USER.
-export const createUserInstance = (
+interface CreateUserInstanceInput {
   input:
     | AuthTypeCollection['CreateUserInputWithPassword']
-    | AuthTypeCollection['CreateUserInputWithOtp'],
-) => {
+    | AuthTypeCollection['CreateUserInputWithOtp'];
+}
+
+// Never pass `req.body` into `new User(...)`. Extra keys like `role` would be copied.
+// Only the fields below are set; role is always USER.
+export const createUserInstance = ({ input }: CreateUserInstanceInput) => {
   const user = new User({
     name: input.name,
     email: input.email,
     gender: input.gender,
     age: input.age,
     role: UserConstantsCollection.UserRole.USER,
+    isSeededProfile: input.isSeededProfile ?? false,
   });
 
   if ('password' in input && input.password) {
