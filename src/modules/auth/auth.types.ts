@@ -1,10 +1,9 @@
 import type { UserFields } from '../user/user.model.ts';
 
-type LoginInput = Pick<UserFields, 'email' | 'password'>;
-
-type CreateUserFields = Omit<UserFields, 'createdAt' | 'updatedAt' | 'id' | 'role'>;
+export type LoginInput = Pick<UserFields, 'email' | 'password'>;
 
 export interface AuthTypeCollection {
-  LoginInput: { input: LoginInput };
-  CreateUserInput: CreateUserFields;
+  LoginInput: LoginInput;
+  CreateUserInputWithPassword: Omit<UserFields, 'createdAt' | 'updatedAt' | 'id' | 'role'>;
+  CreateUserInputWithOtp: Omit<AuthTypeCollection['CreateUserInputWithPassword'], 'password'>;
 }

@@ -4,15 +4,22 @@ import { User } from './user.model.ts';
 
 // Never pass `req.body` into `new User(...)`. Extra keys like `role` would be copied.
 // Only the fields below are set; role is always USER.
-export const createUserInstance = (input: AuthTypeCollection['CreateUserInput']) => {
+export const createUserInstance = (
+  input:
+    | AuthTypeCollection['CreateUserInputWithPassword']
+    | AuthTypeCollection['CreateUserInputWithOtp'],
+) => {
   const user = new User({
     name: input.name,
     email: input.email,
-    password: input.password,
     gender: input.gender,
     age: input.age,
     role: UserConstantsCollection.UserRole.USER,
   });
+
+  if ('password' in input && input.password) {
+    user.password = input.password;
+  }
 
   if (input.phoneNumber) {
     user.phoneNumber = input.phoneNumber;
@@ -34,7 +41,7 @@ export const createUserInstance = (input: AuthTypeCollection['CreateUserInput'])
     user.jobTitle = input.jobTitle;
   }
 
-  if (input.photos?.length) {
+  if (input.photos.length) {
     user.photos = input.photos;
   }
 
@@ -42,13 +49,11 @@ export const createUserInstance = (input: AuthTypeCollection['CreateUserInput'])
     user.location = { city: input.location.city };
   }
 
-  if (input.interestedIn?.length) {
+  if (input.interestedIn.length) {
     user.interestedIn = input.interestedIn;
   }
 
-  if (input.preferences) {
-    user.preferences = input.preferences;
-  }
+  user.preferences = input.preferences;
 
   if (input.life) {
     user.life = input.life;

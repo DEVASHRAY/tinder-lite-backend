@@ -260,7 +260,6 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
       minlength: [
         UserConstantsCollection.strongPasswordValidationOptions.minLength,
         UserConstantsCollection.strongPasswordMinLengthMessage,
@@ -270,13 +269,19 @@ const userSchema = new mongoose.Schema(
         UserConstantsCollection.userPasswordMaxLengthMessage,
       ],
       validate: {
+        // OTP accounts have no password yet. Skip strength rules when the field is empty.
         // `isStrongPassword` returns true/false. It does not throw, so Mongoose
         // uses `message` (built from `strongPasswordOptions`) when this is false.
-        validator: (value: string) =>
-          validator.isStrongPassword(
+        validator: (value: string) => {
+          if (!value) {
+            return true;
+          }
+
+          return validator.isStrongPassword(
             value,
             UserConstantsCollection.strongPasswordValidationOptions,
-          ),
+          );
+        },
         message: UserConstantsCollection.strongPasswordMessage,
       },
       // `select: false` hides this path from `find` / `findById`. Mongo still stores it.
@@ -410,7 +415,7 @@ const userSchema = new mongoose.Schema(
       versionKey: false,
       // Last step before JSON leaves the server.
       // Drop `_id` (keep string `id`) and `password` even if we loaded the hash to verify login.
-      transform: (_doc, ret: { _id?: mongoose.Types.ObjectId; password?: string }) => {
+      transform: (_doc, ret: { _id?: mongoose.Types.ObjectId; password?: string | null }) => {
         delete ret._id;
         delete ret.password;
         return ret;

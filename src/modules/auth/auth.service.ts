@@ -9,7 +9,11 @@ import { AuthConstantsCollection } from './auth.constants.ts';
 import { UserConstantsCollection } from '../user/user.constants.ts';
 import mongoose from 'mongoose';
 
-const createUser = async ({ input }: { input: AuthTypeCollection['CreateUserInput'] }) => {
+const createUser = async ({
+  input,
+}: {
+  input: AuthTypeCollection['CreateUserInputWithPassword'];
+}) => {
   if (!input.email || !input.password) {
     throw new ApplicationError({
       message: 'Email and password are required',
@@ -51,14 +55,18 @@ const createUser = async ({ input }: { input: AuthTypeCollection['CreateUserInpu
   return user;
 };
 
-const signup = async ({ input }: { input: AuthTypeCollection['CreateUserInput'] }) => {
+const signup = async ({ input }: { input: AuthTypeCollection['CreateUserInputWithPassword'] }) => {
   const user = await createUser({ input });
   const token = JwtCollection.generateAccessToken({ userId: user.id });
 
   return { user, token };
 };
 
-const signupBulk = async ({ users }: { users: AuthTypeCollection['CreateUserInput'][] }) => {
+const signupBulk = async ({
+  users,
+}: {
+  users: AuthTypeCollection['CreateUserInputWithPassword'][];
+}) => {
   if (!users.length) {
     throw new ApplicationError({
       message: 'Users are required',
@@ -83,7 +91,7 @@ const signupBulk = async ({ users }: { users: AuthTypeCollection['CreateUserInpu
   return createdUsers;
 };
 
-const login = async ({ input }: AuthTypeCollection['LoginInput']) => {
+const login = async ({ input }: { input: AuthTypeCollection['LoginInput'] }) => {
   if (!input.email || !input.password) {
     throw new ApplicationError({
       message: 'Invalid email or password',
@@ -105,7 +113,7 @@ const login = async ({ input }: AuthTypeCollection['LoginInput']) => {
   // `select: false` on password: we must ask for the hash to verify it.
   const user = await User.findOne({ email: input.email }).select('+password');
 
-  if (!user) {
+  if (!user?.password) {
     throw new ApplicationError({
       message: 'Invalid email or password',
       statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
