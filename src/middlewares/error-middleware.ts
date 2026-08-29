@@ -56,6 +56,13 @@ export const errorMiddleware = (
     return;
   }
 
+  if (error.message === 'request entity too large') {
+    res
+      .status(ApplicationErrorConstantsCollection.HttpStatusCode.PAYLOAD_TOO_LARGE)
+      .json({ message: 'Request body is too large' });
+    return;
+  }
+
   res
     .status(ApplicationErrorConstantsCollection.HttpStatusCode.INTERNAL_SERVER_ERROR)
     .json({ message: 'Internal server error' });

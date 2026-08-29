@@ -5,6 +5,7 @@ import { apiRouter } from './api.routes.ts';
 import { connectDB } from './config/database.ts';
 import { loadLocalEnv } from './config/env.ts';
 import { errorMiddleware } from './middlewares/error-middleware.ts';
+import { HttpConstantsCollection } from './lib/http.constants.ts';
 import { logger } from './lib/logger.ts';
 import cookieParser from 'cookie-parser';
 
@@ -27,7 +28,8 @@ try {
 const app = express();
 
 // `express.json()` reads the HTTP request body as text and turns JSON into `req.body`.
-app.use(express.json());
+// Default limit is 100kb; bulk signup seed (~200kb for 100 users) needs more.
+app.use(express.json({ limit: HttpConstantsCollection.jsonBodyLimit }));
 // `cookie-parser` reads the `Cookie` header and sets `req.cookies` (needed to read the JWT cookie).
 app.use(cookieParser());
 
