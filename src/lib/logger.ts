@@ -1,3 +1,5 @@
+import { getRequestId } from './request-context.ts';
+
 type LogLevel = 'success' | 'fail' | 'warn' | 'info' | 'debug';
 
 interface PaintInput {
@@ -69,31 +71,28 @@ const paint = ({ color, text }: PaintInput): string => {
 const timestamp = (): string => new Date().toISOString();
 
 const formatLog = ({ level, message, detail }: FormatLogInput): string => {
-  const header = `${iconByLevel[level]}  ${labelByLevel[level].padEnd(5)}  ${paint({ color: dim, text: timestamp() })}`;
+  const requestId = getRequestId();
+  const requestField = requestId ? `  requestId=${requestId}` : '';
+  const header = `${iconByLevel[level]}  ${labelByLevel[level].padEnd(5)}  ${paint({ color: dim, text: timestamp() })}${requestField}`;
   const title = paint({ color: colorByLevel[level], text: header });
-  const body = `    ${message}`;
+  const body = `${title}  ${message}`;
 
   if (!detail) {
-    return `${title}\n${body}`;
+    return body;
   }
 
-  return `${title}\n${body}\n${paint({ color: dim, text: `    ${detail}` })}`;
+  return `${body}  ${paint({ color: dim, text: detail })}`;
 };
 
 const write = ({ level, message, detail }: FormatLogInput): void => {
-  const formatted = formatLog({ level, message, detail });
+  const formatted = `${formatLog({ level, message, detail })}\n`;
 
-  if (level === 'fail') {
-    console.error(formatted);
+  if (level === 'fail' || level === 'warn') {
+    process.stderr.write(formatted);
     return;
   }
 
-  if (level === 'warn') {
-    console.warn(formatted);
-    return;
-  }
-
-  console.log(formatted);
+  process.stdout.write(formatted);
 };
 
 const log = ({ level, message, detail = null }: LogInput): void => {
@@ -151,7 +150,13 @@ const resolveLogDetail = <Thrown>({
 }: LoggerMessageInput<Thrown>): string | null => {
   // `catch` can throw anything. We only print a stack when the value is actually an `Error`.
   if (error instanceof Error) {
-    return errorDetail({ error });
+    const fromError = errorDetail({ error });
+
+    if (!detail) {
+      return fromError;
+    }
+
+    return `${detail}\n    ${fromError}`;
   }
 
   return detail;

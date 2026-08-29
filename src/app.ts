@@ -7,6 +7,8 @@ import { loadLocalEnv } from './config/env.ts';
 import { errorMiddleware } from './middlewares/error-middleware.ts';
 import { HttpConstantsCollection } from './lib/http.constants.ts';
 import { logger } from './lib/logger.ts';
+import { requestAccessMiddleware } from './middlewares/request-access-middleware.ts';
+import { requestContextMiddleware } from './middlewares/request-context-middleware.ts';
 import cookieParser from 'cookie-parser';
 
 // When you run `npm run dev`, Node starts this file from the top:
@@ -27,6 +29,10 @@ try {
 
 const app = express();
 
+// Start request-local state before parsers and routes so their failures keep the same response ID.
+app.use(requestContextMiddleware);
+// Observe completion before parsers and routes so successes, errors, aborts, and 404s are all covered.
+app.use(requestAccessMiddleware);
 // `express.json()` reads the HTTP request body as text and turns JSON into `req.body`.
 // Default limit is 100kb; bulk signup seed (~200kb for 100 users) needs more.
 app.use(express.json({ limit: HttpConstantsCollection.jsonBodyLimit }));
