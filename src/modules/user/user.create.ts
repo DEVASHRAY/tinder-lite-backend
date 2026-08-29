@@ -44,7 +44,7 @@ export const createUserInstance = ({ input }: CreateUserInstanceInput) => {
     user.jobTitle = input.jobTitle;
   }
 
-  if (input.photos.length) {
+  if (input.photos?.length) {
     user.photos = input.photos;
   }
 
@@ -52,11 +52,13 @@ export const createUserInstance = ({ input }: CreateUserInstanceInput) => {
     user.location = { city: input.location.city };
   }
 
-  if (input.interestedIn.length) {
+  if (input.interestedIn?.length) {
     user.interestedIn = input.interestedIn;
   }
 
-  user.preferences = input.preferences;
+  if (input.preferences) {
+    user.preferences = input.preferences;
+  }
 
   if (input.life) {
     user.life = input.life;
