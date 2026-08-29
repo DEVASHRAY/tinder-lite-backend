@@ -22,7 +22,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "deploy": "npm ci && npm run build && pm2 restart tinder-lite-backend"
   },
   "dependencies": {
     "argon2": "^0.45.1",
