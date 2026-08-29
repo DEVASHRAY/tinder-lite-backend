@@ -24,6 +24,11 @@ const getAwsRegion = () => {
 const getFromEmailAddress = () => {
   const fromEmailAddress = process.env['SES_FROM_EMAIL'];
 
+  logger.info({
+    message: 'SES email config',
+    detail: `From Email Address: ${fromEmailAddress ?? 'unavailable'} , AWS Region: ${getAwsRegion()} ,`,
+  });
+
   if (!fromEmailAddress) {
     throw new ApplicationError({
       message: 'SES_FROM_EMAIL is required',
@@ -97,6 +102,12 @@ const sendEmail = async ({
   }
 
   // SendEmailCommand is the AWS request object. `client.send` is the network call.
+
+  logger.info({
+    message: 'SES email config',
+    detail: `From Email Address: ${getFromEmailAddress()} , To: ${to} , Subject: ${subject} `,
+  });
+
   const command = new SendEmailCommand({
     FromEmailAddress: getFromEmailAddress(),
     Destination: {
