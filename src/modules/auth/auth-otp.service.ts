@@ -12,6 +12,7 @@ import { otpService } from '../otp/otp.service.ts';
 import { createUserInstance } from '../user/user.create.ts';
 import { User, type UserFields } from '../user/user.model.ts';
 import { AuthConstantsCollection } from './auth.constants.ts';
+import { AuthOtpEmailTemplateCollection } from './auth-otp-email.template.ts';
 import type { AuthTypeCollection } from './auth.types.ts';
 
 const normalizeEmail = ({ email }: { email: string }) => email.trim().toLowerCase();
@@ -59,12 +60,17 @@ const sendOtp = async ({ email }: Pick<UserFields, 'email'>) => {
       expiresAt,
     });
 
-    const expiresInMinutes = String(OtpConstantsCollection.otpExpirationMs / (1000 * 60));
+    const emailContent = AuthOtpEmailTemplateCollection.buildOtpVerificationEmail({
+      expiresInMinutes: OtpConstantsCollection.otpExpirationMinutes,
+      otp,
+      productName: AuthConstantsCollection.productName,
+    });
 
     await SesCollection.sendEmail({
       to: email,
-      subject: AuthConstantsCollection.otpEmailSubject,
-      text: `Your ${AuthConstantsCollection.productName} verification code is ${otp}. It expires in ${expiresInMinutes} minutes.`,
+      subject: emailContent.subject,
+      text: emailContent.text,
+      html: emailContent.html,
     });
 
     return { wasAlreadySent: false };

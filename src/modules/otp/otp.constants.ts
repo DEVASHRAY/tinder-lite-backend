@@ -4,12 +4,13 @@ const otpMaxExclusive = 1000000;
 
 // 1000ms = 1 second
 // 1000 * 60 = 1 minute
-// 1000 * 60 * 10 = 10 minutes
-const otpExpirationMs = 1000 * 60 * 10;
+const otpExpirationMinutes = 10;
+const otpExpirationMs = 1000 * 60 * otpExpirationMinutes;
 
 export const OtpConstantsCollection = {
   otpLength,
   otpMin,
   otpMaxExclusive,
+  otpExpirationMinutes,
   otpExpirationMs,
 };
