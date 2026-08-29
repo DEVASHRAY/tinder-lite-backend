@@ -7,6 +7,12 @@ enum UserGender {
   Other = 'other',
 }
 
+// Feed matching: men and/or women only. Profile gender can still be `other`.
+enum UserInterest {
+  Female = 'female',
+  Male = 'male',
+}
+
 enum UserRole {
   ADMIN = 'ADMIN',
   USER = 'USER',
@@ -108,6 +114,7 @@ const preferenceDefaultMaxDistanceKm = 80;
 
 export const UserConstantsCollection = {
   UserGender,
+  UserInterest,
   UserRole,
   MovieNightStyle,
   WeekdayPace,

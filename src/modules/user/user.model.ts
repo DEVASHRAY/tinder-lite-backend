@@ -380,8 +380,8 @@ const userSchema = new mongoose.Schema(
         {
           type: String,
           enum: {
-            values: Object.values(UserConstantsCollection.UserGender),
-            message: '{VALUE} is not a valid gender type',
+            values: Object.values(UserConstantsCollection.UserInterest),
+            message: '{VALUE} is not a valid interest',
           },
         },
       ],
@@ -425,7 +425,7 @@ userSchema.pre('validate', function syncAgeAndPrimaryPhoto() {
     this.age = computeAge({ birthDate: this.birthDate });
   }
 
-  if (this.photoUrl || !this.photos?.length) {
+  if (this.photoUrl || !this.photos.length) {
     return;
   }
 

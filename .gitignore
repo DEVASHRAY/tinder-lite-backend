@@ -6,3 +6,4 @@ coverage/
 .env.*
 .DS_Store
 seed/bulk-signup.json
+seed/generate-bulk-signup.py
