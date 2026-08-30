@@ -1,0 +1,33 @@
+---
+description: Preserve the agreed chat architecture and discuss each implementation stage before coding
+alwaysApply: true
+---
+
+# Chat Implementation Workflow
+
+- When work touches chat, first read `CHAT_BACKEND_DESIGN.md`.
+- Treat that document as the current design record, not as implemented behavior.
+- Discuss the relevant design topic with the user before implementing it.
+- Work through chat decisions one topic at a time and explain them in plain language with a concrete example.
+- Explain why the choice is needed, its trade-offs, failure behavior, industry terminology, and credible alternatives.
+- Do not silently resolve anything listed as an open decision.
+- Treat Socket.IO with WebSocket-only transport and its in-memory adapter as selected decisions.
+- Do not add native `ws`, HTTP long polling, or Redis unless the user agrees to change the design.
+- Implement only the backend scope the user has explicitly approved; frontend chat remains deferred until requested.
+- Before each implementation stage, identify the exact design sections and files it affects.
+- If repository evidence conflicts with the design note, explain the conflict before changing code.
+- If an implementation must deviate from the design, obtain agreement and update the design note so it does not become stale.
+
+## Required Review Checkpoints
+
+- Data model, references, ownership, indexes, ordering, and pagination.
+- Accepted-connection authorization and block/unmatch implications.
+- Idempotency, transaction boundaries, race conditions, and recovery.
+- HTTP versus WebSocket responsibilities and event contracts.
+- Socket authentication, exact Origin validation, limits, heartbeat, expiry, cleanup, and backpressure.
+- Sent, delivered, read, and unread semantics.
+- Logging privacy, correlation, abuse limits, and error behavior.
+- Single-process assumptions and the Redis/outbox boundary.
+- Tests, load conditions, performance budgets, and measured results.
+
+Do not claim production readiness until the approved checkpoints are implemented and verified.

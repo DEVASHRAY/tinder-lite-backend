@@ -7,6 +7,54 @@ import { Connection, type ConnectionDocument } from './connection.model.ts';
 import { getMinMaxUserIds } from './connection.pair.ts';
 import type { ConnectionTypeCollection } from './connection.types.ts';
 
+const requireAcceptedConnection = async ({
+  connectionId,
+  requesterUserId,
+}: {
+  connectionId: string;
+  requesterUserId: string;
+}) => {
+  if (!connectionId) {
+    throw new ApplicationError({
+      message: 'Connection ID is required',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(connectionId)) {
+    throw new ApplicationError({
+      message: 'Invalid connection id',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+    });
+  }
+
+  try {
+    const connection = await Connection.findOne({
+      _id: connectionId,
+      status: ConnectionConstantsCollection.CONNECTION_STATUS_ENUM.ACCEPTED,
+      $or: [{ senderId: requesterUserId }, { receiverId: requesterUserId }],
+    });
+
+    if (!connection) {
+      throw new ApplicationError({
+        message: 'Forbidden',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.FORBIDDEN,
+      });
+    }
+
+    return connection;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new ApplicationError({
+      message: 'Failed to authorize connection',
+      statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.INTERNAL_SERVER_ERROR,
+    });
+  }
+};
+
 const createConnection = async ({
   user,
   receiverId,
@@ -245,4 +293,5 @@ export const connectionService = {
   updateConnection,
   getConnections,
   getPeerConnection,
+  requireAcceptedConnection,
 };

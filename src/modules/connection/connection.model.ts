@@ -25,6 +25,7 @@ const connectionSchema = new Schema(
     },
     status: {
       type: String,
+      required: true,
       enum: {
         values: Object.values(ConnectionConstantsCollection.CONNECTION_STATUS_ENUM),
         message: '{VALUE} is not a valid connection status',
@@ -54,6 +55,8 @@ const connectionSchema = new Schema(
 );
 
 connectionSchema.index({ minUserId: 1, maxUserId: 1 }, { unique: true });
+connectionSchema.index({ senderId: 1, status: 1 });
+connectionSchema.index({ receiverId: 1, status: 1 });
 
 export type ConnectionFieldsType = InferSchemaType<typeof connectionSchema> & {
   id: string;
