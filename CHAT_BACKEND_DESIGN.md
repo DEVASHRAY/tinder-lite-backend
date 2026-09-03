@@ -210,7 +210,7 @@ Conversation:
   "_id": "conversation-501",
   "connectionId": "connection-101",
   "lastSequence": 2,
-  "participantStates": [
+  "participants": [
     {
       "userId": "user-kush",
       "lastDeliveredSequence": 2,
@@ -258,7 +258,7 @@ The common values form the references:
 ```text
 Connection._id     = Conversation.connectionId
 Conversation._id   = Message.conversationId
-User._id           = Conversation.participantStates.userId
+User._id           = Conversation.participants.userId
 User._id           = Message.senderId
 ```
 
@@ -275,10 +275,7 @@ All messages live in one `messages` collection. "Separate document" does not mea
 ```json
 {
   "_id": "conversation-501",
-  "messages": [
-    { "text": "First message" },
-    { "text": "Second message" }
-  ]
+  "messages": [{ "text": "First message" }, { "text": "Second message" }]
 }
 ```
 
@@ -316,7 +313,7 @@ Conceptual shape:
   "_id": "ObjectId",
   "connectionId": "ObjectId",
   "lastSequence": 42,
-  "participantStates": [
+  "participants": [
     {
       "userId": "ObjectId",
       "lastDeliveredSequence": 42,
@@ -334,7 +331,6 @@ Conceptual shape:
     "messageId": "ObjectId",
     "senderId": "ObjectId",
     "textPreview": "A bounded preview",
-    "sequence": 42,
     "createdAt": "Date"
   },
   "createdAt": "Date",
@@ -456,7 +452,7 @@ This protects against both users sending the first message concurrently and acci
 Conceptually:
 
 ```text
-{ participantStates.userId: 1, lastMessage.createdAt: -1, _id: -1 }
+{ participants.userId: 1, lastMessage.createdAt: -1, _id: -1 }
 ```
 
 This supports:

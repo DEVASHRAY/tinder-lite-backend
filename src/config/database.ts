@@ -8,7 +8,6 @@ export const connectDB = async () => {
     await mongoose.connect(process.env['MONGODB_URI'] ?? '');
     logger.success({
       message: 'Connected to MongoDB',
-      detail: mongoose.connection.host,
     });
   } catch (error) {
     logger.fail({
