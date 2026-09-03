@@ -68,6 +68,10 @@ const messageSchema = new Schema(
   },
 );
 
+messageSchema.index({ conversationId: 1, sequenceNumber: 1 }, { unique: true });
+
+messageSchema.index({ conversationId: 1, senderId: 1, clientMessageId: 1 }, { unique: true });
+
 export type MessageFieldsType = InferSchemaType<typeof messageSchema> & {
   id: string;
 };
