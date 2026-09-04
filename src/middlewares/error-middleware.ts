@@ -56,6 +56,19 @@ export const errorMiddleware = (
     return;
   }
 
+  if (
+    error instanceof SyntaxError &&
+    'status' in error &&
+    error.status === ApplicationErrorConstantsCollection.HttpStatusCode.BAD_REQUEST &&
+    'type' in error &&
+    error.type === 'entity.parse.failed'
+  ) {
+    res
+      .status(ApplicationErrorConstantsCollection.HttpStatusCode.BAD_REQUEST)
+      .json({ message: 'Invalid JSON request body' });
+    return;
+  }
+
   if (error.message === 'request entity too large') {
     res
       .status(ApplicationErrorConstantsCollection.HttpStatusCode.PAYLOAD_TOO_LARGE)

@@ -7,21 +7,102 @@ import { ChatConstantsCollection } from './chat.constants.ts';
 import { chatService } from './chat.service.ts';
 
 // The read routes are wired first; their database logic will be added one route at a time.
-const getConversations = (_req: Request, response: Response, next: NextFunction) => {
+const getConversationInbox = async (
+  request: Request<object, object, object, { cursor?: string }>,
+  response: Response,
+  next: NextFunction,
+) => {
   try {
-    const result = chatService.getConversations();
+    if (!request.user) {
+      throw new ApplicationError({
+        message: 'Unauthorized',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+      });
+    }
 
-    response.status(200).json(result);
+    const { cursor } = request.query;
+
+    const result = await chatService.getConversationInbox({
+      userId: request.user.id,
+      ...(cursor ? { cursor } : {}),
+    });
+
+    response.status(200).json({
+      message: 'Conversation inbox fetched',
+      data: result,
+    });
   } catch (error) {
     next(error);
   }
 };
 
-const getMessages = (_req: Request, response: Response, next: NextFunction) => {
+const getMessageHistory = async (
+  request: Request<{ connectionId: string }, object, object, { lastLoadedSequenceNumber?: string }>,
+  response: Response,
+  next: NextFunction,
+) => {
   try {
-    const result = chatService.getMessages();
+    if (!request.user) {
+      throw new ApplicationError({
+        message: 'Unauthorized',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNAUTHORIZED,
+      });
+    }
 
-    response.status(200).json(result);
+    if (!request.params.connectionId) {
+      throw new ApplicationError({
+        message: 'Connection ID is required',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(request.params.connectionId)) {
+      throw new ApplicationError({
+        message: 'Connection ID is invalid',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
+    }
+
+    const lastLoadedSequenceNumberQuery = request.query.lastLoadedSequenceNumber;
+    let lastLoadedSequenceNumber: number | undefined;
+
+    if (lastLoadedSequenceNumberQuery) {
+      // Query values arrive as text; Number parses the full value before the safe-integer check.
+      const parsedLastLoadedSequenceNumber = Number(lastLoadedSequenceNumberQuery);
+
+      if (
+        !Number.isSafeInteger(parsedLastLoadedSequenceNumber) ||
+        parsedLastLoadedSequenceNumber <= 0
+      ) {
+        throw new ApplicationError({
+          message: 'Last loaded sequence number must be a positive safe integer',
+          statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+        });
+      }
+
+      lastLoadedSequenceNumber = parsedLastLoadedSequenceNumber;
+    } else if ('lastLoadedSequenceNumber' in request.query) {
+      throw new ApplicationError({
+        message: 'Last loaded sequence number must be a positive safe integer',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
+    }
+
+    const result = lastLoadedSequenceNumber
+      ? await chatService.getMessageHistory({
+          userId: request.user.id,
+          connectionId: request.params.connectionId,
+          lastLoadedSequenceNumber,
+        })
+      : await chatService.getMessageHistory({
+          userId: request.user.id,
+          connectionId: request.params.connectionId,
+        });
+
+    response.status(200).json({
+      message: 'Messages fetched',
+      data: result,
+    });
   } catch (error) {
     next(error);
   }
@@ -103,7 +184,7 @@ const sendMessage = async (
 };
 
 export const chatController = {
-  getConversations,
-  getMessages,
+  getConversationInbox,
+  getMessageHistory,
   sendMessage,
 };

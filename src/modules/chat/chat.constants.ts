@@ -1,8 +1,15 @@
+// These response-only values are computed from receipt watermarks; Message documents stay immutable.
+enum MessageDeliveryStatus {
+  SENT = 'SENT',
+  DELIVERED = 'DELIVERED',
+  READ = 'READ',
+}
+
 const messageTextMaxLength = 2000;
 const lastMessagePreviewMaxLength = 120;
 const clientMessageIdLength = 36;
-const messageHistoryDefaultLimit = 30;
-const messageHistoryMaxLimit = 50;
+const messageHistoryDefaultLimit = 20;
+const messageHistoryMaxLimit = 20;
 const conversationInboxDefaultLimit = 20;
 
 const safeIntegerValidator = {
@@ -19,6 +26,7 @@ const nonNegativeSafeIntegerField = {
 };
 
 export const ChatConstantsCollection = {
+  MessageDeliveryStatus,
   messageTextMaxLength,
   lastMessagePreviewMaxLength,
   clientMessageIdLength,

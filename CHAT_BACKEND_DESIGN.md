@@ -475,7 +475,7 @@ This supports:
 
 - one unique sequence within a conversation
 - newest or oldest ordering by scanning the index in either direction
-- `beforeSequence` cursor pagination
+- `lastLoadedSequenceNumber` cursor pagination
 
 #### Idempotent send
 
@@ -563,13 +563,15 @@ sort sequence descending
 limit 30
 ```
 
+Despite the phrase "last loaded," `lastLoadedSequenceNumber` is the oldest sequence the client currently has. The strict `<` boundary loads only messages older than that message.
+
 The service can reverse the result before returning it so the UI receives oldest-to-newest display order.
 
 ### Why not offset pagination
 
 `skip(100000)` makes MongoDB walk past 100,000 records before returning data. It becomes slower as history grows and is unstable while new messages are inserted.
 
-Cursor pagination says "continue before sequence 700," which is an indexed boundary.
+Cursor pagination says "continue with messages older than sequence number 700," which is an indexed boundary.
 
 ---
 
@@ -614,34 +616,97 @@ POST /api/v1/chat/connections/:connectionId/messages
 ### List conversations
 
 ```text
-GET /api/v1/chat/conversations?limit=20&cursor=...
+GET /api/v1/chat/conversations?cursor=<opaqueCursor>
 ```
 
-Returns:
+`cursor` is optional and is the only supported query parameter. Clients must pass back the single
+opaque `nextCursor` string unchanged. Internally it carries the latest-message timestamp plus
+Conversation ID so equal timestamps still resume deterministically. Every page uses the fixed
+20-item inbox limit.
 
-- conversation ID
-- connection ID
-- peer profile summary
-- latest-message preview
-- latest-message time
-- unread count for the authenticated user
-- next cursor
+The exact JSON response contract is:
 
-The conversation-list cursor should contain the latest-message timestamp plus conversation ID as a deterministic tie-breaker.
+```ts
+{
+  message: 'Conversation inbox fetched';
+  data: {
+    items: Array<{
+      conversationId: string;
+      connectionId: string;
+      peer: {
+        id: string;
+        name: string | null;
+        photoUrl: string | null;
+      };
+      lastMessage: {
+        textPreview: string;
+        createdAt: string; // ISO-8601 date serialized by Express
+        sentByAuthenticatedUser: boolean;
+        deliveryStatus: 'SENT' | 'DELIVERED' | 'READ' | null;
+      };
+      unreadCount: number;
+    }>;
+    nextCursor: string | null;
+  }
+}
+```
+
+For an incoming latest message, `sentByAuthenticatedUser` is `false` and `deliveryStatus` is `null`
+because receipt ticks are sender-side state. For an outgoing latest message, compare the peer's
+watermarks with `Conversation.lastSequenceNumber`: read at or beyond that sequence is `READ`,
+otherwise delivered at or beyond it is `DELIVERED`, and otherwise the status is `SENT`.
+`unreadCount` remains the authenticated viewer's separate state. The response never exposes either
+participant's raw delivery or read watermarks. `nextCursor` is `null` when no older accepted
+conversation remains.
 
 ### Load messages
 
 ```text
-GET /api/v1/chat/connections/:connectionId/messages?limit=30&beforeSequence=120
+GET /api/v1/chat/connections/:connectionId/messages?lastLoadedSequenceNumber=120
 ```
 
-Rules:
+`lastLoadedSequenceNumber` is optional. Every page uses the fixed 20-item history limit. The exact
+JSON response contract is:
 
-- Default limit 30.
-- Set a hard maximum, such as 50.
-- Verify participant and `ACCEPTED` status.
-- Return an empty list if no conversation has started.
-- Return a next cursor when older messages exist.
+```ts
+{
+  message: 'Messages fetched';
+  data: {
+    items: Array<{
+      id: string;
+      conversationId: string;
+      senderId: string;
+      text: string;
+      clientMessageId: string;
+      sequenceNumber: number;
+      createdAt: string; // ISO-8601 date serialized by Express
+      deliveryStatus: 'SENT' | 'DELIVERED' | 'READ' | null;
+    }>;
+    nextLastLoadedSequenceNumber: number | null;
+  }
+}
+```
+
+The service verifies that the requester belongs to the accepted Connection, identifies the other
+Connection user, and compares each bounded-page item with that peer participant's delivered/read
+watermarks. It creates plain response objects with computed `deliveryStatus` values without changing
+immutable Message documents or exposing the peer participant, peer unread count, watermarks, or
+other internal state.
+
+For each outgoing item, the service compares `sequenceNumber` in this priority order:
+
+1. `sequenceNumber <= peer.lastReadSequenceNumber` means `READ`.
+2. Otherwise, `sequenceNumber <= peer.lastDeliveredSequenceNumber` means `DELIVERED`.
+3. Otherwise, the item is `SENT`.
+
+Incoming items have `deliveryStatus: null` and show no ticks. If no Conversation exists, the
+response remains `{ items: [], nextLastLoadedSequenceNumber: null }`. If a Conversation exists but
+does not contain the authenticated Connection peer, the service returns a masked internal server
+error rather than guessing or exposing inconsistent state.
+
+Future realtime receipt events will carry a through-sequence watermark so one event can update many
+loaded messages. The HTTP history response instead computes per-message statuses so the current page
+can render immediately.
 
 ### Send message
 
@@ -1257,6 +1322,8 @@ Inbox item:
 - peer profile image
 - bounded last-message preview
 - last-message time
+- whether the authenticated user sent the latest message
+- sender-side latest-message delivery status, or `null` for an incoming latest message
 - unread count
 - conversation ID
 - connection ID
