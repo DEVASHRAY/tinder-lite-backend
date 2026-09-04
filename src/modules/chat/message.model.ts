@@ -16,7 +16,7 @@ const messageSchema = new Schema(
       required: true,
       immutable: true,
     },
-    content: {
+    text: {
       type: String,
       required: true,
       immutable: true,

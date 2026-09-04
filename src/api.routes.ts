@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { adminMiddleware } from './middlewares/admin-middleware.ts';
 import { authMiddleware } from './middlewares/auth-middleware.ts';
 import { authRouter } from './modules/auth/auth.routes.ts';
+import { chatRouter } from './modules/chat/chat.routes.ts';
 import { connectionRouter } from './modules/connection/connection.routes.ts';
 import { feedRouter } from './modules/feed/feed.routes.ts';
 import { profileRouter } from './modules/profile/profile.routes.ts';
@@ -20,6 +21,7 @@ apiV1Router.use(authMiddleware);
 apiV1Router.use('/users', adminMiddleware, userRouter);
 apiV1Router.use('/profile', profileRouter);
 apiV1Router.use('/connections', connectionRouter);
+apiV1Router.use('/chat', chatRouter);
 apiV1Router.use('/feed', feedRouter);
 
 /*
