@@ -139,6 +139,29 @@ const authenticateSocket = async ({
 
   try {
     const accessToken = JwtCollection.verifyAccessToken({ token });
+    // JWT `exp` is seconds since the Unix epoch. Node timers and Date.now use milliseconds,
+    // so authentication converts it once and stores only the server-verified millisecond value.
+    const accessTokenExpirationTimeSeconds = accessToken.exp;
+
+    if (
+      typeof accessTokenExpirationTimeSeconds !== 'number' ||
+      !Number.isSafeInteger(accessTokenExpirationTimeSeconds) ||
+      accessTokenExpirationTimeSeconds <= 0
+    ) {
+      return {
+        isAuthenticated: false,
+        rejectionReason: WebSocketConstantsCollection.AuthenticationRejectionReason.Token,
+      };
+    }
+
+    const accessTokenExpiresAtMs = accessTokenExpirationTimeSeconds * 1000;
+
+    if (!Number.isSafeInteger(accessTokenExpiresAtMs)) {
+      return {
+        isAuthenticated: false,
+        rejectionReason: WebSocketConstantsCollection.AuthenticationRejectionReason.Token,
+      };
+    }
 
     try {
       const user = await User.findById(accessToken.userId);
@@ -150,8 +173,18 @@ const authenticateSocket = async ({
         };
       }
 
+      const remainingLifetimeMs = accessTokenExpiresAtMs - Date.now();
+
+      if (remainingLifetimeMs <= 0) {
+        return {
+          isAuthenticated: false,
+          rejectionReason: WebSocketConstantsCollection.AuthenticationRejectionReason.Token,
+        };
+      }
+
       return {
         isAuthenticated: true,
+        accessTokenExpiresAtMs,
         authenticatedUserId: accessToken.userId,
       };
     } catch {
@@ -224,6 +257,7 @@ export const registerWebSocketAuthentication = ({
       }
 
       // Typed socket.data gives every feature the same server-verified identity.
+      socket.data.accessTokenExpiresAtMs = authentication.accessTokenExpiresAtMs;
       socket.data.authenticatedUserId = authentication.authenticatedUserId;
       next();
     });

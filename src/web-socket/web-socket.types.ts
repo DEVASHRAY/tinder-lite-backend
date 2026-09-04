@@ -10,6 +10,7 @@ export type AuthenticationRejectionReason =
   (typeof WebSocketConstantsCollection.AuthenticationRejectionReason)[keyof typeof WebSocketConstantsCollection.AuthenticationRejectionReason];
 
 export interface AuthenticatedSocketData {
+  accessTokenExpiresAtMs: number;
   authenticatedUserId: string;
 }
 
@@ -31,9 +32,26 @@ export type AuthenticatedSocket = Socket<
   AuthenticatedSocketData
 >;
 
+export interface GetPrivateUserRoomNameInput {
+  authenticatedUserId: string;
+}
+
+export interface JoinAuthenticatedSocketToPrivateUserRoomInput {
+  socket: AuthenticatedSocket;
+}
+
+export interface RegisterPrivateUserRoomInput {
+  io: WebSocketServer;
+}
+
+export interface RegisterWebSocketExpiryInput {
+  io: WebSocketServer;
+}
+
 export type SocketAuthenticationResult =
   | {
       isAuthenticated: true;
+      accessTokenExpiresAtMs: number;
       authenticatedUserId: string;
     }
   | {

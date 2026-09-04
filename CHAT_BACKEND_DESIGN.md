@@ -103,6 +103,8 @@ Relevant current files:
 - `src/server.ts` loads local environment values, connects MongoDB, creates the Node HTTP server, attaches Socket.IO and starts listening.
 - `src/web-socket/web-socket.server.ts` creates the application's one strictly typed Socket.IO server with WebSocket-only transport and browser-client serving disabled.
 - `src/web-socket/web-socket.auth.ts` validates handshake Origin, cookie JWT and current user existence before any feature receives a socket.
+- `src/web-socket/web-socket.expiry.ts` disconnects each admitted socket when its server-verified access-token expiry arrives.
+- `src/web-socket/web-socket.room.ts` joins every authenticated socket to one server-generated private user room shared by future realtime features.
 - `src/web-socket/web-socket.types.ts` owns the combined event maps and shared authenticated socket-data contract.
 - `src/api.routes.ts` mounts protected version-one routes after `authMiddleware`.
 - `src/middlewares/auth-middleware.ts` verifies the cookie JWT and loads the user.
@@ -828,6 +830,8 @@ user:kush
 
 The server derives the room from the authenticated user ID. A client cannot choose or join another user's private room.
 
+The implemented connection listener derives `user:<authenticatedUserId>` only from typed `socket.data`. It awaits adapters that join asynchronously, logs no credential or message data on failure, and disconnects a socket that could not enter its private room.
+
 ### Why not one socket per conversation
 
 If a user has 50 conversations, opening 50 sockets wastes memory, file descriptors and heartbeats.
@@ -923,18 +927,19 @@ Local development should set `ALLOWED_WEB_ORIGIN=http://localhost:3000`. Product
 
 Authentication at handshake is not enough. The current JWT expires after two hours.
 
-The server must:
+The implemented handshake:
 
-- read the verified token's expiry
-- schedule socket closure at that expiry
-- clean the timer when the socket closes
+- requires a positive safe-integer `exp` claim from the already verified JWT payload
+- converts JWT seconds to the millisecond expiry stored in typed `socket.data`
+- rejects missing, malformed, unsafe or already-expired values as `Unauthorized`
 
-Otherwise, a socket accepted today could remain authorized after its JWT expires.
+After `connection`, the server subtracts `Date.now()` from that trusted expiry once and schedules one timer to disconnect the socket. The fixed two-hour token lifetime is safely below Node's maximum timer delay. An earlier disconnect, including private-room join failure, clears the timer.
 
 Selected initial behavior:
 
 ```text
 JWT expires -> server closes socket
+Client reconnects -> handshake must authenticate again with a fresh cookie
 User logs out -> frontend closes its socket
 Network or tab closes -> backend cleans up socket
 ```
@@ -953,13 +958,14 @@ Frontend closure is sufficient for the initial normal flow, but stronger server-
 
 Network failures do not always produce an immediate close event.
 
-Socket.IO's Engine.IO layer provides heartbeat handling. Configure and measure its `pingInterval` and `pingTimeout` instead of building a second custom heartbeat protocol:
+Socket.IO's Engine.IO layer provides heartbeat handling instead of requiring a second custom protocol. The server now sets the documented Socket.IO 4.8.3 defaults explicitly:
 
 ```text
-Engine.IO sends ping
-Client replies with pong
-No pong within the configured timeout -> Socket.IO closes the connection
+pingInterval = 25,000 ms
+pingTimeout  = 20,000 ms
 ```
+
+Engine.IO sends a ping every 25 seconds and closes a connection that does not answer within the following 20 seconds. Depending on when a connection becomes unresponsive, worst-case detection is roughly interval plus timeout, or 45 seconds.
 
 On close, error or heartbeat timeout:
 
@@ -967,7 +973,7 @@ On close, error or heartbeat timeout:
 - clear JWT-expiry timers
 - clear application-owned per-socket state
 
-Intervals are configuration values that must be validated under load. At large scale, heartbeat work should be distributed to avoid synchronized CPU/network spikes.
+These values make the liveness contract explicit; they are not a measured optimization. Mobile-network behavior, reconnect rates and server load must be measured before tuning them. At large scale, heartbeat work should be distributed to avoid synchronized CPU/network spikes.
 
 ### Backpressure
 
@@ -1449,7 +1455,7 @@ Every inbound event needs:
 - a small maximum payload
 - per-event authorization
 
-The initial WebSocket channel must carry control events and text metadata, not media bytes.
+The initial WebSocket channel must carry control events and text metadata, not media bytes. Engine.IO now limits one inbound Socket.IO packet to 16 KiB (`16,384` bytes or characters). The current 2,000-character text limit remains below that budget even at four UTF-8 bytes per character, leaving more than 8 KiB for JSON and protocol metadata. This is an initial security/resource budget, not a measured optimum.
 
 ### Rate limits
 
@@ -1667,6 +1673,9 @@ The implemented foundation separates:
 - HTTP server creation
 - one shared Socket.IO attachment
 - shared Socket.IO handshake authentication
+- per-socket JWT-expiry disconnect and timer cleanup
+- explicit heartbeat and 16 KiB inbound-packet baselines
+- shared private user-room membership
 - process startup
 
 There is one Socket.IO `Server` per Node HTTP server, not one per feature. Chat, notifications, presence and future realtime features share that `io` instance and the authenticated connection.
@@ -1708,6 +1717,8 @@ src/web-socket/
   web-socket.types.ts
   web-socket.server.ts
   web-socket.auth.ts
+  web-socket.expiry.ts
+  web-socket.room.ts
 ```
 
 Responsibilities:
@@ -1719,19 +1730,21 @@ Responsibilities:
 - `chat.service.ts`: authorization, transaction, history, inbox and receipt business rules.
 - `chat.controller.ts`: HTTP request parsing and responses.
 - `chat.routes.ts`: HTTP method-to-controller mapping.
-- `web-socket.constants.ts`: shared authentication outcomes and safe client text.
+- `web-socket.constants.ts`: shared authentication outcomes, safe client text and connection-health budgets.
 - `web-socket.types.ts`: combined strict event maps, shared authenticated socket data and middleware types.
 - `web-socket.server.ts`: the single Socket.IO server setup and WebSocket-only configuration.
 - `web-socket.auth.ts`: shared exact Origin, raw cookie, JWT and user-existence handshake checks.
+- `web-socket.expiry.ts`: one disconnect timer per admitted socket, cleared on early disconnect.
+- `web-socket.room.ts`: server-owned private user-room naming and post-authentication membership.
 
-There are no chat business events in the current authentication-only step, so no empty chat registrar or no-op handler exists. When chat events are added, their names, payload types and handlers belong under `src/web-socket/chat/` and register against the existing server:
+There are no chat business events in the current shared-infrastructure step, so no empty chat registrar or no-op handler exists. When chat events are added, their names, payload types and handlers belong under `src/web-socket/chat/` and register against the existing server:
 
 ```text
 registerChatSocketHandlers({ io })
 registerNotificationSocketHandlers({ io })
 ```
 
-These registrars must never construct another Socket.IO server. Connection limits and event handlers remain deferred. Do not put MongoDB operations in routes or response handling in services.
+These registrars must never construct another Socket.IO server. They use the shared room-name helper to target every active tab or device for one authenticated user consistently. Connection limits, application backpressure queues and event handlers remain deferred. Do not put MongoDB operations in routes or response handling in services.
 
 `src/api.routes.ts` mounts the HTTP chat router after `authMiddleware`.
 
@@ -2048,6 +2061,12 @@ The service should define whether reusing the same key with different content re
 - slow-consumer cutoff
 
 A focused runtime probe for the implemented handshake passed exact Origin plus a valid cookie, and rejected missing/wrong/malformed Origin, missing/duplicate/empty/malformed cookie, invalid JWT and expired JWT with the same `Unauthorized` client error. The probe stubbed only the `User.findById` read, made no persistent database changes and confirmed rejected pre-credential cases performed no user lookup. The broader socket, lifecycle and load suite remains deferred with the rest of realtime behavior.
+
+A focused private-room probe confirmed that two sockets for one authenticated user shared only that user's server-generated room, another authenticated user remained isolated, client-supplied query/auth identities could not choose the room, and a rejected handshake created no connection or private-room membership.
+
+A focused expiry probe confirmed that a short-lived valid token connected and was server-disconnected at expiry, already-expired and missing/malformed expiry claims were rejected as `Unauthorized`, early disconnect canceled later timer work, reconnect with a fresh token succeeded, and private rooms were removed after disconnect.
+
+A short connection-health probe confirmed the explicit heartbeat values, accepted an 8 KiB packet, disconnected a 17 KiB packet, and preserved the JWT-expiry/reconnect and room-cleanup lifecycle. Engine.IO's installed type definitions and implementation confirm that it sends each ping and closes a connection that does not pong within `pingTimeout`; the full 45-second unresponsive-client path remains part of longer lifecycle testing.
 
 ### Failure and load tests
 
@@ -2467,13 +2486,15 @@ WebSocket over TLS, analogous to HTTPS. Production chat must use WSS.
 9. Add Socket.IO and validate its WebSocket-only transport, typed events and in-memory adapter. Implemented in the current working tree.
 10. Refactor startup to retain the HTTP server. Implemented in the current working tree.
 11. Add authenticated, Origin-validated Socket.IO handshakes. Implemented in the current working tree.
-12. Add bounded socket registry, heartbeat, expiry and backpressure.
-13. Add committed message fanout.
-14. Add delivered/read receipt watermarks.
-15. Add graceful shutdown.
-16. Add integration, concurrency, failure and load tests.
-17. Record baseline measurements before scaling changes.
-18. Add Redis and outbox only when entering multi-process production.
+12. Add server-generated private user rooms. Implemented in the current working tree.
+13. Disconnect sockets at their server-verified JWT expiry. Implemented in the current working tree.
+14. Make heartbeat and inbound packet budgets explicit. Implemented in the current working tree; measurement and tuning remain deferred.
+15. Add committed message fanout.
+16. Add delivered/read receipt watermarks.
+17. Add graceful shutdown.
+18. Add integration, concurrency, failure and load tests.
+19. Record baseline measurements before scaling changes.
+20. Add Redis and outbox only when entering multi-process production.
 
 ---
 
