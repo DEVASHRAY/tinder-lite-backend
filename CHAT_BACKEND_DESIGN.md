@@ -99,7 +99,11 @@ The current backend uses:
 
 Relevant current files:
 
-- `src/app.ts` constructs Express, connects MongoDB and calls `app.listen` directly.
+- `src/app.ts` constructs and exports Express without opening a network listener.
+- `src/server.ts` loads local environment values, connects MongoDB, creates the Node HTTP server, attaches Socket.IO and starts listening.
+- `src/web-socket/web-socket.server.ts` creates the application's one strictly typed Socket.IO server with WebSocket-only transport and browser-client serving disabled.
+- `src/web-socket/web-socket.auth.ts` validates handshake Origin, cookie JWT and current user existence before any feature receives a socket.
+- `src/web-socket/web-socket.types.ts` owns the combined event maps and shared authenticated socket-data contract.
 - `src/api.routes.ts` mounts protected version-one routes after `authMiddleware`.
 - `src/middlewares/auth-middleware.ts` verifies the cookie JWT and loads the user.
 - `src/lib/jwt.ts` generates and verifies access tokens.
@@ -122,12 +126,9 @@ This means the connection record should remain the source of truth for whether t
 
 ### Existing gaps that matter to chat
 
-- There is no conversation or message model.
-- There is no WebSocket server.
-- `app.ts` does not retain an HTTP server to which a WebSocket server can attach.
+- Socket.IO handshakes now have exact Origin validation and existing-cookie JWT authentication, but there are no socket caps or business event handlers yet.
 - There is no graceful shutdown or socket draining.
 - There is no Redis, queue or cross-process fanout.
-- There is no explicit WebSocket Origin policy.
 - There is no rate limiter.
 - Connection-list queries are not paginated and do not have participant/status indexes.
 - The connection schema does not currently mark `status` as required.
@@ -877,19 +878,21 @@ wss://tinder-lite.space/ws
 
 Because it is same-origin, the browser includes the existing HttpOnly authentication cookie in the upgrade request.
 
-Before completing the upgrade, the backend:
+Before Socket.IO accepts the connection or runs future connection/event handlers, `io.use`:
 
-1. Parses the auth cookie.
-2. Calls the existing JWT verification logic.
-3. Loads or validates the user.
-4. Rejects an invalid or expired session.
-5. Registers the socket under the authenticated user ID.
+1. Validates one canonical `Origin` against the configured frontend origin.
+2. Parses exactly one non-empty `token` value from the raw `Cookie` header.
+3. Calls the existing `JwtCollection.verifyAccessToken` signature and expiry verification.
+4. Uses the same `User.findById(accessToken.userId)` existence rule as HTTP authentication.
+5. Stores only `{ authenticatedUserId: string }` in typed `socket.data`.
 
-The normal HTTP Express auth middleware does not authenticate Socket.IO connections. Socket.IO connection middleware and its handshake authorization hook can reuse:
+The normal HTTP Express auth middleware and `cookie-parser` do not process Socket.IO handshakes. The socket middleware therefore reuses:
 
 - the auth cookie name
 - `JwtCollection.verifyAccessToken`
 - the User lookup rule
+
+It does not accept identity from `socket.handshake.auth`, query parameters or event payloads. Missing, malformed, invalid-signature and expired credentials all receive the same `Unauthorized` client message. Calling `next(error)` exposes that safe message through the client's `connect_error`; categorized server logs contain no cookie or JWT values.
 
 ### Origin validation
 
@@ -897,22 +900,24 @@ WebSocket does not provide normal browser CORS enforcement in the same way as `f
 
 A malicious website may attempt to open the application's socket while the browser has an authentication cookie. This class of attack is called Cross-Site WebSocket Hijacking.
 
-The backend must compare the handshake `Origin` against an exact allowlist:
+The backend compares the handshake `Origin` against exactly one configured origin:
 
 ```text
 Development: http://localhost:3000
 Production:  https://tinder-lite.space
 ```
 
-Do not use substring checks such as "contains tinder-lite.space." Do not use a wildcard with credentialed sockets.
+`ALLOWED_WEB_ORIGIN` is required at startup. The trusted value is parsed once with `URL`; each handshake must provide exactly one canonical HTTP(S) Origin whose `.origin` equals that trusted `.origin`. Missing, duplicate, malformed and mismatched values are rejected before cookie processing. There are no wildcard, substring, suffix, regular-expression-domain or reflected-origin checks.
 
-Proposed backend environment value:
+Backend environment value:
 
 ```text
 ALLOWED_WEB_ORIGIN=https://tinder-lite.space
 ```
 
 Authentication answers "who is this?" Origin validation answers "which website initiated this browser connection?" Both are required.
+
+Local development should set `ALLOWED_WEB_ORIGIN=http://localhost:3000`. Production must set its exact HTTPS frontend origin.
 
 ### JWT expiry after a socket is connected
 
@@ -1646,7 +1651,7 @@ Socket.IO's JSON-compatible payloads are selected initially because they are eas
 
 ## 30. Runtime integration
 
-The current `src/app.ts` calls `app.listen` directly. Socket.IO support requires an explicit Node HTTP server:
+The runtime now keeps `src/app.ts` importable without listening and uses `src/server.ts` to create the explicit Node HTTP server required by Socket.IO:
 
 ```text
 Express app
@@ -1655,14 +1660,18 @@ Express app
         -> Socket.IO server using WebSocket-only transport
 ```
 
-The implementation should separate:
+The implemented foundation separates:
 
 - app construction
 - database startup
 - HTTP server creation
-- WebSocket attachment
+- one shared Socket.IO attachment
+- shared Socket.IO handshake authentication
 - process startup
-- graceful shutdown
+
+There is one Socket.IO `Server` per Node HTTP server, not one per feature. Chat, notifications, presence and future realtime features share that `io` instance and the authenticated connection.
+
+Graceful shutdown remains a later stage.
 
 ### Graceful shutdown
 
@@ -1680,11 +1689,9 @@ Without draining, every PM2 restart abruptly drops connections and can interrupt
 
 ---
 
-## 31. Proposed backend module boundaries
+## 31. Backend module boundaries
 
-The repository rule requires flat feature folders and one job per file.
-
-Conceptual chat module:
+HTTP/data chat behavior remains in the flat domain module, while connection-wide Socket.IO behavior is shared:
 
 ```text
 src/modules/chat/
@@ -1695,25 +1702,36 @@ src/modules/chat/
   chat.service.ts
   chat.controller.ts
   chat.routes.ts
-  chat.socket.ts
-  chat.socket-auth.ts
-  chat.socket-events.ts
+
+src/web-socket/
+  web-socket.constants.ts
+  web-socket.types.ts
+  web-socket.server.ts
+  web-socket.auth.ts
 ```
 
 Responsibilities:
 
-- `chat.constants.ts`: event names, limits and close-code values.
-- `chat.types.ts`: request, response and event types only.
+- `chat.constants.ts`: HTTP/data chat constants.
+- `chat.types.ts`: HTTP/data chat response types.
 - `conversation.model.ts`: conversation Mongoose schema and indexes.
 - `message.model.ts`: message Mongoose schema and indexes.
 - `chat.service.ts`: authorization, transaction, history, inbox and receipt business rules.
 - `chat.controller.ts`: HTTP request parsing and responses.
 - `chat.routes.ts`: HTTP method-to-controller mapping.
-- `chat.socket.ts`: Socket.IO server setup, WebSocket-only configuration and private user rooms.
-- `chat.socket-auth.ts`: Origin, cookie/JWT, user and connection-limit checks.
-- `chat.socket-events.ts`: strictly typed receipt handlers and committed-message fanout.
+- `web-socket.constants.ts`: shared authentication outcomes and safe client text.
+- `web-socket.types.ts`: combined strict event maps, shared authenticated socket data and middleware types.
+- `web-socket.server.ts`: the single Socket.IO server setup and WebSocket-only configuration.
+- `web-socket.auth.ts`: shared exact Origin, raw cookie, JWT and user-existence handshake checks.
 
-The exact split can be adjusted if any file develops more than one responsibility. Do not put MongoDB operations in routes or response handling in services.
+There are no chat business events in the current authentication-only step, so no empty chat registrar or no-op handler exists. When chat events are added, their names, payload types and handlers belong under `src/web-socket/chat/` and register against the existing server:
+
+```text
+registerChatSocketHandlers({ io })
+registerNotificationSocketHandlers({ io })
+```
+
+These registrars must never construct another Socket.IO server. Connection limits and event handlers remain deferred. Do not put MongoDB operations in routes or response handling in services.
 
 `src/api.routes.ts` mounts the HTTP chat router after `authMiddleware`.
 
@@ -2028,6 +2046,8 @@ The service should define whether reusing the same key with different content re
 - unauthorized receipt
 - monotonic receipt update
 - slow-consumer cutoff
+
+A focused runtime probe for the implemented handshake passed exact Origin plus a valid cookie, and rejected missing/wrong/malformed Origin, missing/duplicate/empty/malformed cookie, invalid JWT and expired JWT with the same `Unauthorized` client error. The probe stubbed only the `User.findById` read, made no persistent database changes and confirmed rejected pre-credential cases performed no user lookup. The broader socket, lifecycle and load suite remains deferred with the rest of realtime behavior.
 
 ### Failure and load tests
 
@@ -2444,9 +2464,9 @@ WebSocket over TLS, analogous to HTTPS. Production chat must use WSS.
 6. Implement transactional, idempotent message send.
 7. Implement cursor-based history.
 8. Implement paginated conversation inbox.
-9. Add Socket.IO and validate its WebSocket-only transport, typed events and in-memory adapter.
-10. Refactor startup to retain the HTTP server.
-11. Add authenticated, Origin-validated WebSocket upgrades.
+9. Add Socket.IO and validate its WebSocket-only transport, typed events and in-memory adapter. Implemented in the current working tree.
+10. Refactor startup to retain the HTTP server. Implemented in the current working tree.
+11. Add authenticated, Origin-validated Socket.IO handshakes. Implemented in the current working tree.
 12. Add bounded socket registry, heartbeat, expiry and backpressure.
 13. Add committed message fanout.
 14. Add delivered/read receipt watermarks.
