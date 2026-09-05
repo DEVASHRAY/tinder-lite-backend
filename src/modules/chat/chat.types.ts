@@ -13,10 +13,12 @@ export interface ConversationInboxItem {
     photoUrl: string | null;
   };
   lastMessage: {
-    textPreview: string;
     createdAt: Date;
-    sentByAuthenticatedUser: boolean;
+    deliveryAcknowledgementRequired: boolean;
     deliveryStatus: MessageDeliveryStatus | null;
+    sentByAuthenticatedUser: boolean;
+    sequenceNumber: number;
+    textPreview: string;
   };
   unreadCount: number;
 }

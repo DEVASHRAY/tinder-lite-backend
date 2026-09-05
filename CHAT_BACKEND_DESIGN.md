@@ -656,10 +656,12 @@ The exact JSON response contract is:
         photoUrl: string | null;
       };
       lastMessage: {
-        textPreview: string;
         createdAt: string; // ISO-8601 date serialized by Express
-        sentByAuthenticatedUser: boolean;
+        deliveryAcknowledgementRequired: boolean;
         deliveryStatus: 'SENT' | 'DELIVERED' | 'READ' | null;
+        sentByAuthenticatedUser: boolean;
+        sequenceNumber: number;
+        textPreview: string;
       };
       unreadCount: number;
     }>;
@@ -672,9 +674,12 @@ For an incoming latest message, `sentByAuthenticatedUser` is `false` and `delive
 because receipt ticks are sender-side state. For an outgoing latest message, compare the peer's
 watermarks with `Conversation.lastSequenceNumber`: read at or beyond that sequence is `READ`,
 otherwise delivered at or beyond it is `DELIVERED`, and otherwise the status is `SENT`.
-`unreadCount` remains the authenticated viewer's separate state. The response never exposes either
-participant's raw delivery or read watermarks. `nextCursor` is `null` when no older accepted
-conversation remains.
+`sequenceNumber` is projected from that Conversation counter; it is not duplicated in the stored
+last-message summary. `deliveryAcknowledgementRequired` is true only when the latest message is
+incoming and its sequence is ahead of the authenticated viewer's delivered watermark. This lets a
+returning client skip acknowledgements it already sent without exposing raw participant watermarks.
+`unreadCount` remains the authenticated viewer's separate state. `nextCursor` is `null` when no older
+accepted conversation remains.
 
 ### Load messages
 

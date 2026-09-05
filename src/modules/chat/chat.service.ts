@@ -247,12 +247,18 @@ const getConversationInbox = async ({ userId, cursor }: { userId: string; cursor
           },
           // A leading `$` reads a field from the current pipeline document.
           lastMessage: {
-            textPreview: '$lastMessage.textPreview',
             createdAt: '$lastMessage.createdAt',
-            sentByAuthenticatedUser: {
-              // `$eq` returns a boolean by comparing the summary's sender with the viewer.
-              // Example: sender A viewed by A becomes `true`; viewed by B becomes `false`.
-              $eq: ['$lastMessage.senderId', userObjectId],
+            deliveryAcknowledgementRequired: {
+              // Ask the client to acknowledge only a newer incoming latest Message.
+              $and: [
+                { $ne: ['$lastMessage.senderId', userObjectId] },
+                {
+                  $lt: [
+                    { $ifNull: ['$participants.lastDeliveredSequenceNumber', 0] },
+                    '$lastSequenceNumber',
+                  ],
+                },
+              ],
             },
             deliveryStatus: {
               // `$cond` is an if/then/else: incoming latest messages return `null`;
@@ -293,6 +299,14 @@ const getConversationInbox = async ({ userId, cursor }: { userId: string; cursor
                 },
               ],
             },
+            sentByAuthenticatedUser: {
+              // `$eq` returns a boolean by comparing the summary's sender with the viewer.
+              // Example: sender A viewed by A becomes `true`; viewed by B becomes `false`.
+              $eq: ['$lastMessage.senderId', userObjectId],
+            },
+            // The Conversation counter equals the latest Message's sequence after each transaction.
+            sequenceNumber: '$lastSequenceNumber',
+            textPreview: '$lastMessage.textPreview',
           },
           // Return only the authenticated participant's unread count; default missing data to zero.
           unreadCount: { $ifNull: ['$participants.unreadCount', 0] },
