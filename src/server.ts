@@ -3,6 +3,8 @@ import { app } from './app.ts';
 import { connectDB } from './config/database.ts';
 import { loadLocalEnv } from './config/env.ts';
 import { logger } from './lib/logger.ts';
+import { chatService } from './modules/chat/chat.service.ts';
+import { registerChatWebSocketHandlers } from './web-socket/chat/chat-socket.ts';
 import { attachWebSocketServer } from './web-socket/web-socket.ts';
 
 interface StartListeningInput {
@@ -60,9 +62,11 @@ try {
   // Like React/frontend app construction, Express only defines behavior and cannot own a network port.
   // This Node HTTP server lets Express requests and Socket.IO upgrades share one listener.
   const httpServer = createServer(app);
-
-  // Attach the WebSocket server to the HTTP server.
   attachWebSocketServer({ httpServer });
+  registerChatWebSocketHandlers({
+    markMessagesDelivered: chatService.markMessagesDelivered,
+    markMessagesRead: chatService.markMessagesRead,
+  });
 
   // Start listening for HTTP requests on the specified port.
   await startListening({ httpServer, port });

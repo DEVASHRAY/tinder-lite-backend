@@ -1,8 +1,15 @@
-enum ServerToClientEvent {
-  MESSAGE_CREATED = 'message.created',
+enum ClientToServerEvent {
+  MESSAGE_DELIVERED = 'message.delivered',
+  MESSAGE_READ = 'message.read',
 }
 
-// The HTTP send path uses this closed name only after a new Message transaction commits.
+enum ServerToClientEvent {
+  MESSAGE_CREATED = 'message.created',
+  MESSAGE_DELIVERED = 'message.delivered',
+  MESSAGE_READ = 'message.read',
+}
+
 export const ChatSocketConstantsCollection = {
+  ClientToServerEvent,
   ServerToClientEvent,
 };

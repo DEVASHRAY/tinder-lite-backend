@@ -6,9 +6,10 @@ import { AuthCookieConstantsCollection } from '../lib/auth-cookie.constants.ts';
 import { JwtCollection } from '../lib/jwt.ts';
 import { logger } from '../lib/logger.ts';
 import { User } from '../modules/user/user.model.ts';
-import type { ChatServerToClientEvents } from './chat/chat-socket.types.ts';
-
-type EmptySocketEvents = Record<never, never>;
+import type {
+  ChatClientToServerEvents,
+  ChatServerToClientEvents,
+} from './chat/chat-socket.types.ts';
 
 interface AuthenticatedSocketData {
   accessTokenExpiresAtMs: number;
@@ -29,9 +30,9 @@ export const getPrivateUserRoomName = ({
 
 // Importers share this same instance. Constructing it does not open a port; startup attaches it below.
 export const io = new SocketServer<
-  EmptySocketEvents,
+  ChatClientToServerEvents,
   ChatServerToClientEvents,
-  EmptySocketEvents,
+  Record<never, never>,
   AuthenticatedSocketData
 >({
   pingInterval: 25_000,
@@ -41,9 +42,7 @@ export const io = new SocketServer<
   transports: ['websocket'],
 });
 
-export const attachWebSocketServer = ({
-  httpServer,
-}: AttachWebSocketServerInput): void => {
+export const attachWebSocketServer = ({ httpServer }: AttachWebSocketServerInput): void => {
   // 1. Normalize the one trusted HTTP(S) browser origin at startup.
   const configuredOrigin = process.env['ALLOWED_WEB_ORIGIN'];
 

@@ -476,6 +476,220 @@ const getMessageHistory = async ({
   }
 };
 
+interface MessageReceiptInput {
+  authenticatedUserId: string;
+  conversationId: string;
+  sequenceNumber: number;
+}
+
+const markMessagesDelivered = async ({
+  authenticatedUserId,
+  conversationId,
+  sequenceNumber,
+}: MessageReceiptInput) => {
+  try {
+    if (
+      !mongoose.Types.ObjectId.isValid(conversationId) ||
+      !Number.isSafeInteger(sequenceNumber) ||
+      sequenceNumber <= 0
+    ) {
+      throw new ApplicationError({
+        message: 'Delivered message position is invalid',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
+    }
+
+    // Membership is checked in this first query so another user's Conversation is never exposed.
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      'participants.userId': authenticatedUserId,
+    }).select(['connectionId', 'lastSequenceNumber']);
+
+    if (!conversation) {
+      throw new ApplicationError({
+        message: 'Forbidden',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.FORBIDDEN,
+      });
+    }
+
+    // Conversation membership alone is insufficient if the users later unmatch or block.
+    const connection = await connectionService.requireAcceptedConnection({
+      connectionId: conversation.connectionId.toString(),
+      requesterUserId: authenticatedUserId,
+    });
+    const otherParticipantUserId = connection.senderId.equals(authenticatedUserId)
+      ? connection.receiverId.toString()
+      : connection.senderId.toString();
+
+    if (sequenceNumber > conversation.lastSequenceNumber) {
+      throw new ApplicationError({
+        message: 'Delivered message position is invalid',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
+    }
+
+    const updateResult = await Conversation.updateOne(
+      {
+        _id: conversation._id,
+        // Example: stored 20 + incoming 18 does not match; incoming 42 matches and moves forward.
+        participants: {
+          $elemMatch: {
+            userId: authenticatedUserId,
+            lastDeliveredSequenceNumber: { $lt: sequenceNumber },
+          },
+        },
+      },
+      {
+        // `$` updates only the participant matched by `$elemMatch`, never the other user.
+        $set: {
+          'participants.$.lastDeliveredSequenceNumber': sequenceNumber,
+        },
+      },
+    );
+
+    return {
+      // Duplicate and older acknowledgements return false, so callers do not emit repeated events.
+      wasUpdated: updateResult.modifiedCount === 1,
+      otherParticipantUserId,
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    logger.fail({ message: 'Failed to mark chat messages as delivered', error });
+    throw new Error('Failed to mark chat messages as delivered', { cause: error });
+  }
+};
+
+const markMessagesRead = async ({
+  authenticatedUserId,
+  conversationId,
+  sequenceNumber,
+}: MessageReceiptInput) => {
+  try {
+    if (
+      !mongoose.Types.ObjectId.isValid(conversationId) ||
+      !Number.isSafeInteger(sequenceNumber) ||
+      sequenceNumber <= 0
+    ) {
+      throw new ApplicationError({
+        message: 'Read message position is invalid',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+      });
+    }
+
+    // Resolve the trusted Connection ID without revealing another user's Conversation.
+    const authorizedConversation = await Conversation.findOne({
+      _id: conversationId,
+      'participants.userId': authenticatedUserId,
+    }).select({
+      connectionId: 1,
+    });
+
+    if (!authorizedConversation) {
+      throw new ApplicationError({
+        message: 'Forbidden',
+        statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.FORBIDDEN,
+      });
+    }
+
+    const connection = await connectionService.requireAcceptedConnection({
+      connectionId: authorizedConversation.connectionId.toString(),
+      requesterUserId: authenticatedUserId,
+    });
+    const otherParticipantUserId = connection.senderId.equals(authenticatedUserId)
+      ? connection.receiverId.toString()
+      : connection.senderId.toString();
+
+    const transactionResult = await mongoose.connection.transaction(async (session) => {
+      // Re-read inside the transaction so the watermark and unread count share one snapshot.
+      const conversation = await Conversation.findOne({
+        _id: authorizedConversation._id,
+        'participants.userId': authenticatedUserId,
+      }).session(session);
+
+      if (!conversation) {
+        throw new ApplicationError({
+          message: 'Forbidden',
+          statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.FORBIDDEN,
+        });
+      }
+
+      const readerParticipant = conversation.participants.find((participant) =>
+        participant.userId.equals(authenticatedUserId),
+      );
+
+      if (!readerParticipant) {
+        throw new ApplicationError({
+          message: 'Forbidden',
+          statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.FORBIDDEN,
+        });
+      }
+
+      if (sequenceNumber > conversation.lastSequenceNumber) {
+        throw new ApplicationError({
+          message: 'Read message position is invalid',
+          statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.UNPROCESSABLE_ENTITY,
+        });
+      }
+
+      if (sequenceNumber <= readerParticipant.lastReadSequenceNumber) {
+        return {
+          wasUpdated: false,
+          otherParticipantUserId,
+        };
+      }
+
+      // Only messages from the other participant after the read watermark remain unread.
+      const unreadCount = await Message.countDocuments({
+        conversationId: conversation._id,
+        senderId: otherParticipantUserId,
+        sequenceNumber: { $gt: sequenceNumber },
+      }).session(session);
+
+      const updateResult = await Conversation.updateOne(
+        {
+          _id: conversation._id,
+          participants: {
+            $elemMatch: {
+              userId: authenticatedUserId,
+              lastReadSequenceNumber: { $lt: sequenceNumber },
+            },
+          },
+        },
+        {
+          $set: {
+            'participants.$.lastReadSequenceNumber': sequenceNumber,
+            'participants.$.unreadCount': unreadCount,
+          },
+          // Reading a message also proves that the client received it.
+          $max: {
+            'participants.$.lastDeliveredSequenceNumber': sequenceNumber,
+          },
+        },
+        {
+          session,
+        },
+      );
+
+      return {
+        wasUpdated: updateResult.modifiedCount === 1,
+        otherParticipantUserId,
+      };
+    });
+
+    return transactionResult;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    logger.fail({ message: 'Failed to mark chat messages as read', error });
+    throw new Error('Failed to mark chat messages as read', { cause: error });
+  }
+};
+
 const sendMessage = async ({
   userId,
   connectionId,
@@ -720,5 +934,7 @@ const sendMessage = async ({
 export const chatService = {
   getConversationInbox,
   getMessageHistory,
+  markMessagesDelivered,
+  markMessagesRead,
   sendMessage,
 };

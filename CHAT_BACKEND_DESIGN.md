@@ -16,7 +16,14 @@ Current implementation status on 2026-09-05:
   that instance to the Node HTTP server. The chat publisher imports the same instance directly. A
   newly created Message publishes only after the transaction resolves; retries and failed writes do
   not publish, and realtime failure does not fail the durable HTTP send.
-- Delivered/read receipt events remain pending.
+- The typed client-to-server `message.delivered` contract acknowledges one Conversation through a
+  sequence number. The chat service now authorizes the participant and accepted Connection, rejects
+  positions beyond the Conversation, and atomically advances only a newer delivered watermark. The
+  authenticated Socket.IO listener now calls that service and emits `message.delivered` to the other
+  participant's devices only when the watermark advances.
+- The typed `message.read` listener advances read and delivered watermarks inside a transaction and
+  recomputes unread incoming messages from the same snapshot. After a real watermark change, it
+  emits `message.read` to the other participant's devices for live blue-tick updates.
 
 ---
 
@@ -1257,20 +1264,20 @@ This prevents delayed events from moving a user backward.
 
 ### Delivered event
 
-After Riya's client processes message sequence 42:
+After Riya's client processes message sequence 42, it emits the Socket.IO event named
+`message.delivered` with this payload:
 
 ```json
 {
-  "version": 1,
-  "type": "message.delivered",
-  "data": {
-    "conversationId": "conversation-501",
-    "throughSequence": 42
-  }
+  "conversationId": "conversation-501",
+  "sequenceNumber": 42
 }
 ```
 
-Backend:
+`sequenceNumber: 42` means every message through sequence 42 was delivered; it is not limited to
+only message 42.
+
+The future backend handler:
 
 1. Authenticates the socket user.
 2. Verifies conversation membership and accepted connection.
@@ -1279,25 +1286,24 @@ Backend:
 
 ### Read event
 
-When the chat is visible and the relevant message is displayed:
+When the chat is visible and the relevant message is displayed, the client emits `message.read`:
 
 ```json
 {
-  "version": 1,
-  "type": "message.read",
-  "data": {
-    "conversationId": "conversation-501",
-    "throughSequence": 42
-  }
+  "conversationId": "conversation-501",
+  "sequenceNumber": 42
 }
 ```
 
 Backend:
 
 1. Validates the watermark does not exceed the conversation's current sequence.
-2. Moves Riya's read watermark forward.
-3. Updates unread state safely.
-4. Notifies Kush's sockets.
+2. Moves Riya's read watermark forward and ensures delivered is at least as high.
+3. Counts only Kush's messages after sequence 42 and stores that exact unread count in the same
+   transaction.
+4. Ignores duplicate or older read acknowledgements.
+5. Emits `message.read` to Kush's active sockets so they update outgoing messages through sequence
+   42 to read.
 
 ### Why batch through a sequence
 
@@ -1312,10 +1318,11 @@ On each committed message:
 - sender unread count does not increase
 - recipient unread count increments by one
 
-When the recipient marks the currently known conversation through the latest sequence as read:
+When the recipient marks the conversation through a sequence as read:
 
 - recipient read watermark advances
-- recipient unread count becomes zero
+- recipient delivered watermark advances to at least the same position
+- recipient unread count becomes the number of incoming messages after that position
 
 ### Concurrent send/read race
 
@@ -1328,9 +1335,11 @@ Correct outcomes:
 - If read commits after seeing the new message, unread becomes zero.
 - If the new message commits after the read, unread becomes one.
 
-The system must not blindly set unread to zero outside a consistency boundary because it could erase a concurrently arriving unread message.
-
-If partial read-through is supported, the service must calculate how many recipient messages remain after the watermark rather than assuming zero.
+The implemented read service uses a MongoDB transaction. It reads the current Conversation, counts
+Messages from the other participant after the requested sequence, then updates the reader's
+watermarks and unread count from that same snapshot. A concurrent send also writes the Conversation,
+so one transaction wins and the other retries against the newer state instead of losing an unread
+increment.
 
 ---
 
@@ -1584,10 +1593,26 @@ time are authoritative. `createdAt` is a JSON-safe ISO-8601 string on the wire, 
 `Date`. The event intentionally excludes receipt arrays, unread state, watermarks, mutable delivery
 status, cookies, JWT data and raw Mongoose documents.
 
-Future client-to-server event types remain:
+The first typed client-to-server contract is `message.delivered`:
 
-- `message.delivered`
-- `message.read`
+```json
+{
+  "conversationId": "conversation-501",
+  "sequenceNumber": 42
+}
+```
+
+Its event map is composed into the shared Socket.IO client-to-server map, so future handlers can
+only register the declared name and payload. `sequenceNumber` is a cumulative delivery watermark:
+42 acknowledges every Message through 42. The authenticated Socket.IO listener calls the database
+service and safely observes its asynchronous completion. After a real watermark change, the server
+emits the same typed `message.delivered` payload to the other participant's private user room.
+Duplicate and older acknowledgements do not produce repeated events.
+
+The client-to-server `message.read` event uses the same cumulative payload shape. Its authenticated
+listener calls the transactional read service, which updates read/delivered watermarks and the exact
+unread count. After a real update, the server emits the same typed payload to the other participant's
+private user room; duplicate and older acknowledgements emit nothing.
 
 Message creation remains HTTP in the first version. A generic version/event-ID envelope is deferred
 until a demonstrated protocol-evolution or event-level deduplication need justifies its extra bytes;
@@ -1696,6 +1721,10 @@ The implemented foundation separates:
 - shared private user-room membership
 - one exported process-local Socket.IO instance attached during startup
 - post-commit `message.created` publication for newly stored Messages
+- authenticated `message.delivered` listener registration
+- best-effort `message.delivered` fanout to the other participant after the database update
+- authenticated `message.read` listener with transactional watermark and unread-count updates
+- best-effort `message.read` fanout to the other participant after the database update
 - process startup
 
 There is one Socket.IO `Server` per Node HTTP server, not one per feature. Chat, notifications, presence and future realtime features share that `io` instance and the authenticated connection.
@@ -1746,25 +1775,25 @@ Responsibilities:
 - `chat.types.ts`: HTTP/data chat response types.
 - `conversation.model.ts`: conversation Mongoose schema and indexes.
 - `message.model.ts`: message Mongoose schema and indexes.
-- `chat.service.ts`: authorization, transaction, history, inbox and post-commit publication rules.
+- `chat.service.ts`: authorization, transaction, history, inbox, receipt-watermark, unread-count and
+  post-commit publication rules.
 - `chat.controller.ts`: HTTP request parsing and responses.
 - `chat.routes.ts`: HTTP method-to-controller mapping.
-- `web-socket.ts`: the exported `io` instance, exact-Origin and cookie-JWT authentication,
-  its local authenticated socket-data/event-map types, heartbeat/packet options, HTTP-server
-  attachment, private-room membership, JWT-expiry timer and disconnect cleanup in one lifecycle
-  module.
-- `chat/chat-socket.ts`: synchronous best-effort sender/recipient room-union emission through the
-  shared `io` instance after a new Message transaction commits.
-- `chat/chat-socket.constants.ts`: the closed `message.created` event-name set.
+- `web-socket.ts`: the exported `io` instance, exact-Origin and cookie-JWT authentication, its local
+  authenticated socket-data/event-map types, heartbeat/packet options, HTTP-server attachment,
+  private-room membership, JWT-expiry timer and disconnect cleanup in one lifecycle module.
+- `chat/chat-socket.ts`: authenticated chat-event registration plus synchronous best-effort
+  sender/recipient room-union emission after a new Message transaction commits.
+- `chat/chat-socket.constants.ts`: the closed message creation, delivery and read event-name sets.
 - `chat/chat-socket.types.ts`: the minimal wire payload and strict event map shared with the generic
   Socket.IO server types.
 
 `web-socket.ts` constructs and exports one process-local `io` object without opening a network port.
-`server.ts` calls `attachWebSocketServer({ httpServer })` during startup, and `chat-socket.ts`
-imports that same object directly for `emitMessageCreated`. This is intentionally single-process
-wiring and keeps `app.ts` importable without opening another server, namespace or conversation room.
-Connection limits, application backpressure queues and receipt handlers remain deferred. Do not put
-MongoDB operations in routes or response handling in services.
+`server.ts` attaches it to the HTTP server and calls `registerChatWebSocketHandlers` with the
+delivery/read receipt services. The registration function adds real event behavior but does not
+copy or reassign `io`. This keeps `app.ts` importable without another server, namespace or
+conversation room. Connection limits and application backpressure queues remain deferred. Do not
+put MongoDB operations in routes or response handling in services.
 
 `src/api.routes.ts` mounts the HTTP chat router after `authMiddleware`.
 
