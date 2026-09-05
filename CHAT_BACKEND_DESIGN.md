@@ -110,7 +110,7 @@ The current backend uses:
 - Express 5.
 - Mongoose and MongoDB.
 - An HttpOnly JWT cookie.
-- A two-hour access-token lifetime.
+- A one-day access-token lifetime.
 - PM2 deployment on a long-running server.
 - Request IDs and request access logs.
 
@@ -123,7 +123,7 @@ Relevant current files:
 - `src/api.routes.ts` mounts protected version-one routes after `authMiddleware`.
 - `src/middlewares/auth-middleware.ts` verifies the cookie JWT and loads the user.
 - `src/lib/jwt.ts` generates and verifies access tokens.
-- `src/lib/jwt.constants.ts` defines the two-hour token lifetime.
+- `src/lib/jwt.constants.ts` defines the one-day token lifetime.
 - `src/lib/request-context.ts` provides request-local correlation IDs.
 - `src/modules/connection/connection.model.ts` stores connection participants and status.
 - `src/modules/connection/connection.service.ts` implements connection creation and transitions.
@@ -950,7 +950,7 @@ Local development should set `ALLOWED_WEB_ORIGIN=http://localhost:3000`. Product
 
 ### JWT expiry after a socket is connected
 
-Authentication at handshake is not enough. The current JWT expires after two hours.
+Authentication at handshake is not enough. The current JWT expires after one day.
 
 The implemented handshake:
 
@@ -958,7 +958,7 @@ The implemented handshake:
 - converts JWT seconds to the millisecond expiry stored in typed `socket.data`
 - rejects missing, malformed, unsafe or already-expired values as `Unauthorized`
 
-After `connection`, the server subtracts `Date.now()` from that trusted expiry once and schedules one timer to disconnect the socket. The fixed two-hour token lifetime is safely below Node's maximum timer delay. An earlier disconnect, including private-room join failure, clears the timer.
+After `connection`, the server subtracts `Date.now()` from that trusted expiry once and schedules one timer to disconnect the socket. The fixed one-day token lifetime is safely below Node's maximum timer delay. An earlier disconnect, including private-room join failure, clears the timer.
 
 Selected initial behavior:
 
@@ -2506,7 +2506,7 @@ WebSocket over TLS, analogous to HTTPS. Production chat must use WSS.
 - JWT cookie authentication at the WebSocket handshake.
 - Exact WebSocket Origin allowlist.
 - Heartbeat and stale-socket cleanup.
-- Close socket when the two-hour JWT expires.
+- Close socket when the one-day JWT expires.
 - `clientMessageId` for idempotent retries.
 - MongoDB transaction for message, sequence, summary and unread state.
 - Per-conversation sequence as canonical order.

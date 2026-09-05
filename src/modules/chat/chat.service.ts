@@ -374,6 +374,7 @@ const getMessageHistory = async ({
     if (!conversation) {
       // Conversations start with the first sent message, so no document means empty history.
       return {
+        authenticatedUserId: userId,
         items: [],
         nextLastLoadedSequenceNumber: null,
         readAcknowledgementRequired: false,
@@ -479,6 +480,7 @@ const getMessageHistory = async ({
 
     // Return this page plus the cursor needed to request the next older page.
     return {
+      authenticatedUserId: userId,
       items,
       nextLastLoadedSequenceNumber,
       readAcknowledgementRequired,

@@ -35,6 +35,7 @@ export interface MessageHistoryItem {
 }
 
 export interface MessageHistoryResponse {
+  authenticatedUserId: string;
   items: MessageHistoryItem[];
   nextLastLoadedSequenceNumber: number | null;
   readAcknowledgementRequired: boolean;
