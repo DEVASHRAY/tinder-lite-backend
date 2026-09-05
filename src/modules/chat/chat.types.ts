@@ -38,6 +38,11 @@ export interface MessageHistoryResponse {
   authenticatedUserId: string;
   items: MessageHistoryItem[];
   nextLastLoadedSequenceNumber: number | null;
+  peer: {
+    id: string;
+    name: string | null;
+    photoUrl: string | null;
+  };
   readAcknowledgementRequired: boolean;
   readAcknowledgementSequenceNumber: number | null;
 }

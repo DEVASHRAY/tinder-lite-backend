@@ -694,6 +694,12 @@ JSON response contract is:
 {
   message: 'Messages fetched';
   data: {
+    authenticatedUserId: string;
+    peer: {
+      id: string;
+      name: string | null;
+      photoUrl: string | null;
+    }
     items: Array<{
       id: string;
       conversationId: string;
@@ -705,15 +711,17 @@ JSON response contract is:
       deliveryStatus: 'SENT' | 'DELIVERED' | 'READ' | null;
     }>;
     nextLastLoadedSequenceNumber: number | null;
+    readAcknowledgementRequired: boolean;
+    readAcknowledgementSequenceNumber: number | null;
   }
 }
 ```
 
 The service verifies that the requester belongs to the accepted Connection, identifies the other
-Connection user, and compares each bounded-page item with that peer participant's delivered/read
-watermarks. It creates plain response objects with computed `deliveryStatus` values without changing
-immutable Message documents or exposing the peer participant, peer unread count, watermarks, or
-other internal state.
+Connection user, loads only that user's safe header fields, and compares each bounded-page item with
+that peer participant's delivered/read watermarks. It creates plain response objects with computed
+`deliveryStatus` values without changing immutable Message documents or exposing peer unread counts,
+watermarks, or other internal state.
 
 For each outgoing item, the service compares `sequenceNumber` in this priority order:
 
@@ -721,10 +729,10 @@ For each outgoing item, the service compares `sequenceNumber` in this priority o
 2. Otherwise, `sequenceNumber <= peer.lastDeliveredSequenceNumber` means `DELIVERED`.
 3. Otherwise, the item is `SENT`.
 
-Incoming items have `deliveryStatus: null` and show no ticks. If no Conversation exists, the
-response remains `{ items: [], nextLastLoadedSequenceNumber: null }`. If a Conversation exists but
-does not contain the authenticated Connection peer, the service returns a masked internal server
-error rather than guessing or exposing inconsistent state.
+Incoming items have `deliveryStatus: null` and show no ticks. If no Conversation exists, the response
+still includes the accepted Connection peer with an empty `items` array and a null history cursor. If
+a Conversation exists but does not contain the authenticated Connection peer, the service returns a
+masked internal server error rather than guessing or exposing inconsistent state.
 
 Future realtime receipt events will carry a through-sequence watermark so one event can update many
 loaded messages. The HTTP history response instead computes per-message statuses so the current page

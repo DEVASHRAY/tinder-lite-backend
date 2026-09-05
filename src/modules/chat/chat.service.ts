@@ -366,10 +366,25 @@ const getMessageHistory = async ({
       requesterUserId: userId,
     });
 
-    // Step 2: Find the Conversation linked to the Connection that was just authorized.
-    const conversation = await Conversation.findOne({
-      connectionId: connection._id,
-    });
+    const peerUserId = connection.senderId.equals(userId)
+      ? connection.receiverId
+      : connection.senderId;
+
+    // Step 2: Load message state and the small header profile in parallel.
+    const [conversation, peerUser] = await Promise.all([
+      Conversation.findOne({
+        connectionId: connection._id,
+      }),
+      User.findById(peerUserId).select({
+        name: 1,
+        photoUrl: 1,
+      }),
+    ]);
+    const peer = {
+      id: peerUserId.toString(),
+      name: peerUser?.name ?? null,
+      photoUrl: peerUser?.photoUrl ?? null,
+    };
 
     if (!conversation) {
       // Conversations start with the first sent message, so no document means empty history.
@@ -377,6 +392,7 @@ const getMessageHistory = async ({
         authenticatedUserId: userId,
         items: [],
         nextLastLoadedSequenceNumber: null,
+        peer,
         readAcknowledgementRequired: false,
         readAcknowledgementSequenceNumber: null,
       };
@@ -386,9 +402,6 @@ const getMessageHistory = async ({
     const viewerParticipant = conversation.participants.find((participant) =>
       participant.userId.equals(userId),
     );
-    const peerUserId = connection.senderId.equals(userId)
-      ? connection.receiverId
-      : connection.senderId;
     const peerParticipant = conversation.participants.find((participant) =>
       participant.userId.equals(peerUserId),
     );
@@ -483,6 +496,7 @@ const getMessageHistory = async ({
       authenticatedUserId: userId,
       items,
       nextLastLoadedSequenceNumber,
+      peer,
       readAcknowledgementRequired,
       readAcknowledgementSequenceNumber: readAcknowledgementRequired
         ? conversation.lastSequenceNumber
