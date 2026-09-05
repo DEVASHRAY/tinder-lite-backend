@@ -35,6 +35,8 @@ export const io = new SocketServer<
   Record<never, never>,
   AuthenticatedSocketData
 >({
+  // Engine.IO owns this path on the Node HTTP server; it is not an Express route.
+  path: '/socket.io',
   pingInterval: 25_000,
   pingTimeout: 20_000,
   maxHttpBufferSize: 16_384,
