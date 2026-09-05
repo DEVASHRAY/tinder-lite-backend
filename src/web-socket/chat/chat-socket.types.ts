@@ -19,10 +19,10 @@ export interface MessageCreatedPayload {
 }
 
 export interface ChatClientToServerEvents {
-  [ChatSocketConstantsCollection.ClientToServerEvent.MESSAGE_DELIVERED]: (
+  [ChatSocketConstantsCollection.ClientToServerEvent.MARK_MESSAGE_DELIVERED]: (
     payload: MessageReceiptPayload,
   ) => void;
-  [ChatSocketConstantsCollection.ClientToServerEvent.MESSAGE_READ]: (
+  [ChatSocketConstantsCollection.ClientToServerEvent.MARK_MESSAGE_READ]: (
     payload: MessageReceiptPayload,
   ) => void;
 }

@@ -16,14 +16,14 @@ Current implementation status on 2026-09-05:
   that instance to the Node HTTP server. The chat publisher imports the same instance directly. A
   newly created Message publishes only after the transaction resolves; retries and failed writes do
   not publish, and realtime failure does not fail the durable HTTP send.
-- The typed client-to-server `message.delivered` contract acknowledges one Conversation through a
-  sequence number. The chat service now authorizes the participant and accepted Connection, rejects
-  positions beyond the Conversation, and atomically advances only a newer delivered watermark. The
-  authenticated Socket.IO listener now calls that service and emits `message.delivered` to the other
-  participant's devices only when the watermark advances.
-- The typed `message.read` listener advances read and delivered watermarks inside a transaction and
-  recomputes unread incoming messages from the same snapshot. After a real watermark change, it
-  emits `message.read` to the other participant's devices for live blue-tick updates.
+- The typed client-to-server `message.mark-delivered` command acknowledges one Conversation through
+  a sequence number. The chat service now authorizes the participant and accepted Connection,
+  rejects positions beyond the Conversation, and atomically advances only a newer delivered
+  watermark. The authenticated Socket.IO listener calls that service and emits the server-to-client
+  `message.delivered` event to the other participant's devices only when the watermark advances.
+- The typed `message.mark-read` command advances read and delivered watermarks inside a transaction
+  and recomputes unread incoming messages from the same snapshot. After a real watermark change, the
+  server emits `message.read` to the other participant's devices for live blue-tick updates.
 
 ---
 
@@ -1265,7 +1265,7 @@ This prevents delayed events from moving a user backward.
 ### Delivered event
 
 After Riya's client processes message sequence 42, it emits the Socket.IO event named
-`message.delivered` with this payload:
+`message.mark-delivered` with this payload:
 
 ```json
 {
@@ -1286,7 +1286,8 @@ The future backend handler:
 
 ### Read event
 
-When the chat is visible and the relevant message is displayed, the client emits `message.read`:
+When the chat is visible and the relevant message is displayed, the client emits
+`message.mark-read`:
 
 ```json
 {
@@ -1593,7 +1594,7 @@ time are authoritative. `createdAt` is a JSON-safe ISO-8601 string on the wire, 
 `Date`. The event intentionally excludes receipt arrays, unread state, watermarks, mutable delivery
 status, cookies, JWT data and raw Mongoose documents.
 
-The first typed client-to-server contract is `message.delivered`:
+The first typed client-to-server command is `message.mark-delivered`:
 
 ```json
 {
@@ -1606,13 +1607,15 @@ Its event map is composed into the shared Socket.IO client-to-server map, so fut
 only register the declared name and payload. `sequenceNumber` is a cumulative delivery watermark:
 42 acknowledges every Message through 42. The authenticated Socket.IO listener calls the database
 service and safely observes its asynchronous completion. After a real watermark change, the server
-emits the same typed `message.delivered` payload to the other participant's private user room.
+emits the typed `message.delivered` notification with the same payload to the other participant's
+private user room.
 Duplicate and older acknowledgements do not produce repeated events.
 
-The client-to-server `message.read` event uses the same cumulative payload shape. Its authenticated
-listener calls the transactional read service, which updates read/delivered watermarks and the exact
-unread count. After a real update, the server emits the same typed payload to the other participant's
-private user room; duplicate and older acknowledgements emit nothing.
+The client-to-server `message.mark-read` command uses the same cumulative payload shape. Its
+authenticated listener calls the transactional read service, which updates read/delivered
+watermarks and the exact unread count. After a real update, the server emits the typed `message.read`
+notification with the same payload to the other participant's private user room; duplicate and
+older acknowledgements emit nothing.
 
 Message creation remains HTTP in the first version. A generic version/event-ID envelope is deferred
 until a demonstrated protocol-evolution or event-level deduplication need justifies its extra bytes;
@@ -1721,9 +1724,10 @@ The implemented foundation separates:
 - shared private user-room membership
 - one exported process-local Socket.IO instance attached during startup
 - post-commit `message.created` publication for newly stored Messages
-- authenticated `message.delivered` listener registration
+- authenticated `message.mark-delivered` command listener registration
 - best-effort `message.delivered` fanout to the other participant after the database update
-- authenticated `message.read` listener with transactional watermark and unread-count updates
+- authenticated `message.mark-read` command listener with transactional watermark and unread-count
+  updates
 - best-effort `message.read` fanout to the other participant after the database update
 - process startup
 

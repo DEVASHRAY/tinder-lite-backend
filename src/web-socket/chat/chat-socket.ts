@@ -56,7 +56,7 @@ export const registerChatWebSocketHandlers = ({
       }
     } catch (error) {
       if (error instanceof ApplicationError) {
-        logger.warn({ message: 'Socket message-delivered acknowledgement rejected', error });
+        logger.warn({ message: 'Socket mark-delivered command rejected', error });
         return;
       }
 
@@ -93,7 +93,7 @@ export const registerChatWebSocketHandlers = ({
       }
     } catch (error) {
       if (error instanceof ApplicationError) {
-        logger.warn({ message: 'Socket message-read acknowledgement rejected', error });
+        logger.warn({ message: 'Socket mark-read command rejected', error });
         return;
       }
 
@@ -104,24 +104,27 @@ export const registerChatWebSocketHandlers = ({
 
   // Socket.IO emits `connection` only after the shared authentication middleware accepts the socket.
   io.on('connection', (socket) => {
-    socket.on(ChatSocketConstantsCollection.ClientToServerEvent.MESSAGE_DELIVERED, (payload) => {
-      try {
-        processMessageDeliveredWithCallback(
-          {
-            authenticatedUserId: socket.data.authenticatedUserId,
-            conversationId: payload.conversationId,
-            sequenceNumber: payload.sequenceNumber,
-          },
-          () => {
-            // The async wrapper handles failures; this callback only observes its completion.
-          },
-        );
-      } catch (error) {
-        logger.fail({ message: 'Failed to process message.delivered event', error });
-      }
-    });
+    socket.on(
+      ChatSocketConstantsCollection.ClientToServerEvent.MARK_MESSAGE_DELIVERED,
+      (payload) => {
+        try {
+          processMessageDeliveredWithCallback(
+            {
+              authenticatedUserId: socket.data.authenticatedUserId,
+              conversationId: payload.conversationId,
+              sequenceNumber: payload.sequenceNumber,
+            },
+            () => {
+              // The async wrapper handles failures; this callback only observes its completion.
+            },
+          );
+        } catch (error) {
+          logger.fail({ message: 'Failed to process message.mark-delivered event', error });
+        }
+      },
+    );
 
-    socket.on(ChatSocketConstantsCollection.ClientToServerEvent.MESSAGE_READ, (payload) => {
+    socket.on(ChatSocketConstantsCollection.ClientToServerEvent.MARK_MESSAGE_READ, (payload) => {
       try {
         processMessageReadWithCallback(
           {
@@ -134,7 +137,7 @@ export const registerChatWebSocketHandlers = ({
           },
         );
       } catch (error) {
-        logger.fail({ message: 'Failed to process message.read event', error });
+        logger.fail({ message: 'Failed to process message.mark-read event', error });
       }
     });
   });
