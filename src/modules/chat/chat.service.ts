@@ -376,12 +376,15 @@ const getMessageHistory = async ({
       return {
         items: [],
         nextLastLoadedSequenceNumber: null,
+        readAcknowledgementRequired: false,
+        readAcknowledgementSequenceNumber: null,
       };
     }
 
-    // Step 3: Select the authenticated user's peer from the accepted Connection.
-    // Conversation receipt state belongs to each participant, so the peer's watermarks
-    // describe how far the peer received and read this viewer's outgoing messages.
+    // Step 3: Read both participants' state from the authorized Conversation.
+    const viewerParticipant = conversation.participants.find((participant) =>
+      participant.userId.equals(userId),
+    );
     const peerUserId = connection.senderId.equals(userId)
       ? connection.receiverId
       : connection.senderId;
@@ -389,11 +392,11 @@ const getMessageHistory = async ({
       participant.userId.equals(peerUserId),
     );
 
-    if (!peerParticipant) {
+    if (!viewerParticipant || !peerParticipant) {
       // A Conversation copied both accepted-Connection users when it was created.
-      // Missing the current peer means stored relationship state is inconsistent.
+      // Missing either participant means stored relationship state is inconsistent.
       throw new ApplicationError({
-        message: 'Conversation peer participant state is inconsistent',
+        message: 'Conversation participant state is inconsistent',
         statusCode: ApplicationErrorConstantsCollection.HttpStatusCode.INTERNAL_SERVER_ERROR,
       });
     }
@@ -466,10 +469,22 @@ const getMessageHistory = async ({
       };
     });
 
+    // Only the newest page represents opening the current conversation. When unread
+    // incoming Messages exist, one cumulative receipt can mark everything through
+    // this snapshot's latest sequence as read without emitting once per Message.
+    const readAcknowledgementRequired =
+      !lastLoadedSequenceNumber &&
+      viewerParticipant.unreadCount > 0 &&
+      viewerParticipant.lastReadSequenceNumber < conversation.lastSequenceNumber;
+
     // Return this page plus the cursor needed to request the next older page.
     return {
       items,
       nextLastLoadedSequenceNumber,
+      readAcknowledgementRequired,
+      readAcknowledgementSequenceNumber: readAcknowledgementRequired
+        ? conversation.lastSequenceNumber
+        : null,
     };
   } catch (error) {
     // Preserve expected application failures such as forbidden or invalid requests.
