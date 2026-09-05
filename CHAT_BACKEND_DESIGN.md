@@ -8,6 +8,16 @@ It is a design document, not a statement that the feature is already implemented
 
 The initial design deliberately supports a small product scope while preserving clean boundaries for future production growth.
 
+Current implementation status on 2026-09-05:
+
+- The strictly typed server-to-client `message.created` event name and wire payload are defined and
+  composed into the shared Socket.IO server event map.
+- The generic WebSocket module exports one process-local `io` instance, and server startup attaches
+  that instance to the Node HTTP server. The chat publisher imports the same instance directly. A
+  newly created Message publishes only after the transaction resolves; retries and failed writes do
+  not publish, and realtime failure does not fail the durable HTTP send.
+- Delivered/read receipt events remain pending.
+
 ---
 
 ## 1. The design in one minute
@@ -101,11 +111,8 @@ Relevant current files:
 
 - `src/app.ts` constructs and exports Express without opening a network listener.
 - `src/server.ts` loads local environment values, connects MongoDB, creates the Node HTTP server, attaches Socket.IO and starts listening.
-- `src/web-socket/web-socket.server.ts` creates the application's one strictly typed Socket.IO server with WebSocket-only transport and browser-client serving disabled.
-- `src/web-socket/web-socket.auth.ts` validates handshake Origin, cookie JWT and current user existence before any feature receives a socket.
-- `src/web-socket/web-socket.expiry.ts` disconnects each admitted socket when its server-verified access-token expiry arrives.
-- `src/web-socket/web-socket.room.ts` joins every authenticated socket to one server-generated private user room shared by future realtime features.
-- `src/web-socket/web-socket.types.ts` owns the combined event maps and shared authenticated socket-data contract.
+- `src/web-socket/web-socket.ts` owns and exports the one typed Socket.IO server, authenticates
+  handshakes, joins private user rooms and owns JWT-expiry cleanup in lifecycle order.
 - `src/api.routes.ts` mounts protected version-one routes after `authMiddleware`.
 - `src/middlewares/auth-middleware.ts` verifies the cookie JWT and loads the user.
 - `src/lib/jwt.ts` generates and verifies access tokens.
@@ -885,10 +892,10 @@ Because it is same-origin, the browser includes the existing HttpOnly authentica
 Before Socket.IO accepts the connection or runs future connection/event handlers, `io.use`:
 
 1. Validates one canonical `Origin` against the configured frontend origin.
-2. Parses exactly one non-empty `token` value from the raw `Cookie` header.
+2. Parses the non-empty `token` value from the raw `Cookie` header.
 3. Calls the existing `JwtCollection.verifyAccessToken` signature and expiry verification.
 4. Uses the same `User.findById(accessToken.userId)` existence rule as HTTP authentication.
-5. Stores only `{ authenticatedUserId: string }` in typed `socket.data`.
+5. Stores only the authenticated user ID and verified access-token expiry in typed `socket.data`.
 
 The normal HTTP Express auth middleware and `cookie-parser` do not process Socket.IO handshakes. The socket middleware therefore reuses:
 
@@ -896,7 +903,10 @@ The normal HTTP Express auth middleware and `cookie-parser` do not process Socke
 - `JwtCollection.verifyAccessToken`
 - the User lookup rule
 
-It does not accept identity from `socket.handshake.auth`, query parameters or event payloads. Missing, malformed, invalid-signature and expired credentials all receive the same `Unauthorized` client message. Calling `next(error)` exposes that safe message through the client's `connect_error`; categorized server logs contain no cookie or JWT values.
+It does not accept identity from `socket.handshake.auth`, query parameters or event payloads.
+Missing, malformed, invalid-signature and expired credentials all receive the same `Unauthorized`
+client message. Calling `next(error)` exposes that safe message through the client's
+`connect_error`; the generic server warning contains no cookie or JWT values.
 
 ### Origin validation
 
@@ -911,7 +921,10 @@ Development: http://localhost:3000
 Production:  https://tinder-lite.space
 ```
 
-`ALLOWED_WEB_ORIGIN` is required at startup. The trusted value is parsed once with `URL`; each handshake must provide exactly one canonical HTTP(S) Origin whose `.origin` equals that trusted `.origin`. Missing, duplicate, malformed and mismatched values are rejected before cookie processing. There are no wildcard, substring, suffix, regular-expression-domain or reflected-origin checks.
+`ALLOWED_WEB_ORIGIN` is required at startup and normalized once with `URL`. Each handshake Origin
+header must equal that canonical trusted origin string exactly. Missing, malformed, noncanonical
+and mismatched values therefore fail before cookie processing. There are no wildcard, substring,
+suffix, regular-expression-domain or reflected-origin checks.
 
 Backend environment value:
 
@@ -1545,39 +1558,44 @@ These mechanisms overlap but are not interchangeable.
 
 ## 28. Socket.IO event contract
 
-Socket.IO's event name selects the strictly typed payload. Keep version and correlation metadata in that payload:
+Socket.IO's event name selects the strictly typed payload. The first defined server-to-client
+contract is named exactly `message.created` and has this flat, minimal shape:
 
 ```json
 {
-  "version": 1,
-  "eventId": "server-generated-uuid",
-  "occurredAt": "server-time",
-  "data": {}
+  "conversationId": "conversation-501",
+  "connectionId": "connection-101",
+  "id": "message-901",
+  "senderId": "user-kush",
+  "text": "Hi Riya",
+  "clientMessageId": "30d98673-4a71-4ef0-aeef-26a9f7538449",
+  "sequenceNumber": 42,
+  "createdAt": "2026-09-05T06:30:00.000Z"
 }
 ```
 
-Why:
+The non-exported event-name enum is exposed only through `ChatSocketConstantsCollection`, and the
+chat event map is composed into the shared Socket.IO server-to-client map. Socket.IO therefore
+rejects an unsupported name or payload during type checking without a cast or open string index.
 
-- `version` supports controlled protocol evolution.
-- the Socket.IO event name selects a strictly validated payload.
-- `eventId` supports correlation and deduplication.
-- `occurredAt` aids diagnostics without replacing message ordering.
-- `data` keeps event-specific fields isolated.
+`senderId` lets each receiver derive incoming versus outgoing direction. `clientMessageId` lets
+sender tabs replace or deduplicate an optimistic item. The server-created ID, sequence and ISO-8601
+time are authoritative. `createdAt` is a JSON-safe ISO-8601 string on the wire, not a JavaScript
+`Date`. The event intentionally excludes receipt arrays, unread state, watermarks, mutable delivery
+status, cookies, JWT data and raw Mongoose documents.
 
-Initial server-to-client event types:
-
-- `connection.ready`
-- `message.created`
-- `message.delivered`
-- `message.read`
-- `error`
-
-Initial client-to-server event types:
+Future client-to-server event types remain:
 
 - `message.delivered`
 - `message.read`
 
-Message creation remains HTTP in the first version.
+Message creation remains HTTP in the first version. A generic version/event-ID envelope is deferred
+until a demonstrated protocol-evolution or event-level deduplication need justifies its extra bytes;
+the message's own stable identifiers are sufficient for this slice.
+
+The HTTP send service now calls the typed publisher only for `created: true` after
+`mongoose.connection.transaction()` resolves. An idempotent `created: false` result and every
+authorization, transaction or save failure publish nothing.
 
 Socket.IO's JSON-compatible payloads are selected initially because they are easy to inspect and the payload is small. Binary protocols such as Protobuf should be considered only after measuring serialization size and CPU.
 
@@ -1676,6 +1694,8 @@ The implemented foundation separates:
 - per-socket JWT-expiry disconnect and timer cleanup
 - explicit heartbeat and 16 KiB inbound-packet baselines
 - shared private user-room membership
+- one exported process-local Socket.IO instance attached during startup
+- post-commit `message.created` publication for newly stored Messages
 - process startup
 
 There is one Socket.IO `Server` per Node HTTP server, not one per feature. Chat, notifications, presence and future realtime features share that `io` instance and the authenticated connection.
@@ -1713,12 +1733,11 @@ src/modules/chat/
   chat.routes.ts
 
 src/web-socket/
-  web-socket.constants.ts
-  web-socket.types.ts
-  web-socket.server.ts
-  web-socket.auth.ts
-  web-socket.expiry.ts
-  web-socket.room.ts
+  chat/
+    chat-socket.ts
+    chat-socket.constants.ts
+    chat-socket.types.ts
+  web-socket.ts
 ```
 
 Responsibilities:
@@ -1727,24 +1746,25 @@ Responsibilities:
 - `chat.types.ts`: HTTP/data chat response types.
 - `conversation.model.ts`: conversation Mongoose schema and indexes.
 - `message.model.ts`: message Mongoose schema and indexes.
-- `chat.service.ts`: authorization, transaction, history, inbox and receipt business rules.
+- `chat.service.ts`: authorization, transaction, history, inbox and post-commit publication rules.
 - `chat.controller.ts`: HTTP request parsing and responses.
 - `chat.routes.ts`: HTTP method-to-controller mapping.
-- `web-socket.constants.ts`: shared authentication outcomes, safe client text and connection-health budgets.
-- `web-socket.types.ts`: combined strict event maps, shared authenticated socket data and middleware types.
-- `web-socket.server.ts`: the single Socket.IO server setup and WebSocket-only configuration.
-- `web-socket.auth.ts`: shared exact Origin, raw cookie, JWT and user-existence handshake checks.
-- `web-socket.expiry.ts`: one disconnect timer per admitted socket, cleared on early disconnect.
-- `web-socket.room.ts`: server-owned private user-room naming and post-authentication membership.
+- `web-socket.ts`: the exported `io` instance, exact-Origin and cookie-JWT authentication,
+  its local authenticated socket-data/event-map types, heartbeat/packet options, HTTP-server
+  attachment, private-room membership, JWT-expiry timer and disconnect cleanup in one lifecycle
+  module.
+- `chat/chat-socket.ts`: synchronous best-effort sender/recipient room-union emission through the
+  shared `io` instance after a new Message transaction commits.
+- `chat/chat-socket.constants.ts`: the closed `message.created` event-name set.
+- `chat/chat-socket.types.ts`: the minimal wire payload and strict event map shared with the generic
+  Socket.IO server types.
 
-There are no chat business events in the current shared-infrastructure step, so no empty chat registrar or no-op handler exists. When chat events are added, their names, payload types and handlers belong under `src/web-socket/chat/` and register against the existing server:
-
-```text
-registerChatSocketHandlers({ io })
-registerNotificationSocketHandlers({ io })
-```
-
-These registrars must never construct another Socket.IO server. They use the shared room-name helper to target every active tab or device for one authenticated user consistently. Connection limits, application backpressure queues and event handlers remain deferred. Do not put MongoDB operations in routes or response handling in services.
+`web-socket.ts` constructs and exports one process-local `io` object without opening a network port.
+`server.ts` calls `attachWebSocketServer({ httpServer })` during startup, and `chat-socket.ts`
+imports that same object directly for `emitMessageCreated`. This is intentionally single-process
+wiring and keeps `app.ts` importable without opening another server, namespace or conversation room.
+Connection limits, application backpressure queues and receipt handlers remain deferred. Do not put
+MongoDB operations in routes or response handling in services.
 
 `src/api.routes.ts` mounts the HTTP chat router after `authMiddleware`.
 
@@ -2059,8 +2079,6 @@ The service should define whether reusing the same key with different content re
 - unauthorized receipt
 - monotonic receipt update
 - slow-consumer cutoff
-
-A focused runtime probe for the implemented handshake passed exact Origin plus a valid cookie, and rejected missing/wrong/malformed Origin, missing/duplicate/empty/malformed cookie, invalid JWT and expired JWT with the same `Unauthorized` client error. The probe stubbed only the `User.findById` read, made no persistent database changes and confirmed rejected pre-credential cases performed no user lookup. The broader socket, lifecycle and load suite remains deferred with the rest of realtime behavior.
 
 A focused private-room probe confirmed that two sockets for one authenticated user shared only that user's server-generated room, another authenticated user remained isolated, client-supplied query/auth identities could not choose the room, and a rejected handshake created no connection or private-room membership.
 
@@ -2489,8 +2507,9 @@ WebSocket over TLS, analogous to HTTPS. Production chat must use WSS.
 12. Add server-generated private user rooms. Implemented in the current working tree.
 13. Disconnect sockets at their server-verified JWT expiry. Implemented in the current working tree.
 14. Make heartbeat and inbound packet budgets explicit. Implemented in the current working tree; measurement and tuning remain deferred.
-15. Add committed message fanout.
-16. Add delivered/read receipt watermarks.
+15. Add committed message fanout. Implemented for `created: true` after transaction resolution;
+    history remains recovery for best-effort live failure.
+16. Add delivered/read receipt watermarks. Pending.
 17. Add graceful shutdown.
 18. Add integration, concurrency, failure and load tests.
 19. Record baseline measurements before scaling changes.

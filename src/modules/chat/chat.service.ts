@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { ApplicationErrorConstantsCollection } from '../../lib/application-error.constants.ts';
 import { ApplicationError } from '../../lib/application-error.ts';
 import { logger } from '../../lib/logger.ts';
+import { emitMessageCreated } from '../../web-socket/chat/chat-socket.ts';
 import { ConnectionConstantsCollection } from '../connection/connection.constant.ts';
 import { Connection } from '../connection/connection.model.ts';
 import { connectionService } from '../connection/connection.service.ts';
@@ -509,7 +510,7 @@ const sendMessage = async ({
       try {
         // Step 4: Start a transaction so every chat write succeeds or rolls back together.
         // Returning from this callback commits; throwing from it aborts all writes.
-        return await mongoose.connection.transaction(async (session) => {
+        const transactionResult = await mongoose.connection.transaction(async (session) => {
           // Step 5: Find the Conversation for this Connection, if one already exists.
           // `.session(session)` includes this read in the transaction's consistent snapshot.
           const conversation = await Conversation.findOne({
@@ -649,6 +650,33 @@ const sendMessage = async ({
             message,
           };
         });
+
+        // Mongoose reaches here only after commit; a rollback rejects and skips publication.
+        if (!transactionResult.created) {
+          // An idempotent retry returns its existing Message without re-emitting `message.created`.
+          return transactionResult;
+        }
+
+        // Build a plain wire payload: ObjectIds become strings and Date becomes ISO-8601 text.
+        const payload = {
+          conversationId: transactionResult.message.conversationId.toString(),
+          connectionId: connection._id.toString(),
+          id: transactionResult.message._id.toString(),
+          senderId: transactionResult.message.senderId.toString(),
+          text: transactionResult.message.text,
+          clientMessageId: transactionResult.message.clientMessageId,
+          sequenceNumber: transactionResult.message.sequenceNumber,
+          createdAt: transactionResult.message.createdAt.toISOString(),
+        };
+
+        // Live delivery is best-effort after DB durability; failure cannot undo or fail this HTTP send.
+        emitMessageCreated({
+          senderUserId: userId,
+          recipientUserId: recipientUserId.toString(),
+          payload,
+        });
+
+        return transactionResult;
       } catch (error) {
         // MongoDB error 11000 means a unique index rejected a duplicate insert.
         // On a concurrent first Message, retry once and load the winner's Conversation.

@@ -1,5 +1,5 @@
 ---
-description: Project coding standards — types, enums, files, logging, promises, params, arrows, git
+description: Project coding standards — types, colocation, files, logging, promises, params, arrows, git
 alwaysApply: true
 ---
 
@@ -31,7 +31,7 @@ if (!token) throw new Error('Unauthorized');
 
 ## Enums (closed value sets)
 
-Closed value sets (gender, role) use a TypeScript `enum` in `*.constants.ts`. Do **not** `export enum`. Put it on the collection and import **only** `UserConstantsCollection`.
+Keep a closed value set local when only one implementation module consumes it. When two or more modules consume it, move it to a TypeScript `enum` in `*.constants.ts`. Do **not** `export enum`; put it on the feature collection and import only that collection.
 
 ```ts
 enum UserGender {
@@ -51,11 +51,21 @@ gender: { type: String, enum: Object.values(UserConstantsCollection.UserGender) 
 
 Do not type free-form text (name, email, about) as an enum.
 
-## Modular files (hard)
+## Colocation and modular files (hard)
 
-One job per file. If a file has two jobs, split it before adding more code. One rule file only: this file.
+Start with cohesive implementation files. Split a file when it has multiple independent responsibilities or when real reuse appears—not merely because a local symbol is a type, constant, helper, adapter, or wrapper. One rule file only: this file.
 
-Feature layout (flat in the feature folder):
+Do not create a separate `*.types.ts`, `*.constants.ts`, `*.utils.ts`, helper, adapter, or wrapper file for something consumed by only one implementation module.
+
+- Define single-consumer types, interfaces, constants, enums, and helpers beside their usage.
+- Repeated use inside the same file does not justify extraction.
+- Extract only when two or more implementation modules import the symbol, or a real cycle-free public boundary requires a shared contract.
+- When a second consumer appears later, extract then; do not pre-create layers for hypothetical reuse.
+- DRY means removing actual duplication, not moving every local detail into its own file.
+- SOLID means keeping responsibilities understandable; it does not require one symbol or one function per file.
+- Keep one-use named-parameter interfaces local beside their function.
+
+Use this flat feature layout only for layers that actually exist and have a real independent or shared responsibility:
 
 ```
 src/modules/<feature>/
@@ -75,7 +85,6 @@ Keep files **flat**. Do not add `types/` or `constants/` subfolders until a grou
 
 Forbidden:
 
-- Types and `const` values in the same file
 - Domain types inside `*.model.ts` (except `InferSchemaType` of that schema — moving it cycles imports)
 - Copying a union, interface, or value list into a second file — define once, import
 - Redefining `UserGender` (or any closed set) in the model, controller, or route
@@ -84,12 +93,12 @@ Forbidden:
 - Barrel `index.ts` that re-exports the module unless we explicitly add one
 - Extra `.cursor/rules/*.mdc` files — all standards live here
 
-`*.types.ts`: only `export type` / `export interface`. No `const`, no functions, no schema. Closed sets (gender, role) are `enum`s in `*.constants.ts`.  
-`*.constants.ts`: the file's only public export is the collection. Enums stay unexported and hang on `UserConstantsCollection`. Do not `export enum` or `import { UserGender }`.  
-`*.model.ts`: `import { UserConstantsCollection }`. Use `Object.values(UserConstantsCollection.UserGender)` in the schema. Do not inline `['female', 'male']`.  
+When a shared `*.types.ts` is justified, keep only `export type` / `export interface` there. No `const`, functions, or schema.
+When a shared `*.constants.ts` is justified, its only public export is the feature collection. Shared enums stay unexported and hang on that collection. Do not `export enum` or import the enum directly.
+`*.model.ts`: `import { UserConstantsCollection }`. Use `Object.values(UserConstantsCollection.UserGender)` in the schema. Do not inline `['female', 'male']`.
 `*.routes.ts`: only `router.get/post/...` wired to a controller. No `User.create`, no `req.body` handling.
 
-Create a file only when it has a real export.
+Create a file only when it has a real responsibility. A one-use export alone does not justify a file.
 
 ## Console logging
 
@@ -118,6 +127,7 @@ Every Promise is handled in `try/catch`, including top-level module code.
 Named object parameters apply **only to functions we create**.
 
 - Define an `interface` for that object (`LoggerMessageInput`, `ErrorDetailInput`).
+- Keep that interface beside the function when only the same module consumes it.
 - Call our functions as `fn({ name: value })`.
 - A function we create with no inputs stays `()`.
 - **Do not** wrap, rename, or convert parameters that belong to a library (Express, Mongoose, Node, …) or to TypeScript/JavaScript built-ins. Use those APIs as they are: `app.use((req, res) => { … })`, `mongoose.connect(uri)`.
@@ -135,8 +145,12 @@ Library callbacks stay in whatever form the library expects; when we write the c
 Write comments a frontend engineer new to Node can understand. Use plain English. Spell out jargon the first time (`process`, ESM, TTY, ANSI).
 
 - Explain **why** this exists, and what it does in everyday words.
+- For non-obvious lifecycle callbacks, state **when** the callback runs and whether the resource is already created, authenticated, connected, committed, or cleaned up.
+- For unfamiliar framework APIs, database operators, protocols, and multi-step flows, explain the execution order and include a short concrete input/output example.
+- Put the comment immediately before the code it explains and keep it accurate when behavior changes.
 - Do not use dense compiler flags as the whole comment (`NodeNext`, `verbatimModuleSyntax`) unless you also explain them.
 - Do not narrate common `if`, `return`, `try/catch`, named params, or arrows.
+- Do not add examples to obvious syntax. Comments should remove genuine ambiguity, not repeat the code.
 
 Do comment Node-specific things: top-level `await`, `.ts` import paths, terminal color codes, `process` / `process.exit`, TTY checks, `import type`, and any rare `function` used instead of an arrow.
 

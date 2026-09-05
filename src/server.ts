@@ -3,7 +3,7 @@ import { app } from './app.ts';
 import { connectDB } from './config/database.ts';
 import { loadLocalEnv } from './config/env.ts';
 import { logger } from './lib/logger.ts';
-import { createWebSocketServer } from './web-socket/web-socket.server.ts';
+import { attachWebSocketServer } from './web-socket/web-socket.ts';
 
 interface StartListeningInput {
   httpServer: ReturnType<typeof createServer>;
@@ -55,11 +55,16 @@ try {
 // In Node ESM, top-level await keeps database and network startup in a predictable order.
 try {
   await connectDB();
+
   const port = Number(process.env['PORT']);
   // Like React/frontend app construction, Express only defines behavior and cannot own a network port.
   // This Node HTTP server lets Express requests and Socket.IO upgrades share one listener.
   const httpServer = createServer(app);
-  createWebSocketServer({ httpServer });
+
+  // Attach the WebSocket server to the HTTP server.
+  attachWebSocketServer({ httpServer });
+
+  // Start listening for HTTP requests on the specified port.
   await startListening({ httpServer, port });
   logger.success({
     message: 'Server is running',
